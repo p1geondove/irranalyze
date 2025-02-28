@@ -58,10 +58,15 @@ def digit_generator(big_int:mpz, base=2, max_digits=None):
 
     num_size = big_int.num_digits(10)
     chunk_width = 10**num_size
-    digits_amt_out = int(max(1, min(num_size/log10(base), digits_amt_out)))
-    for _ in range(digits_amt_out):
-        carry, big_int = divmod(big_int * base, chunk_width)
-        yield notation[carry]
+    if digits_amt_out == float('inf'):
+        while True:
+            carry, big_int = divmod(big_int * base, chunk_width)
+            yield notation[carry]
+    else:
+        digits_amt_out = int(max(1, min(num_size/log10(base), digits_amt_out)))
+        for _ in range(digits_amt_out):
+            carry, big_int = divmod(big_int * base, chunk_width)
+            yield notation[carry]
 
 def check_normal(args):
     big_int, base, prec = args
@@ -73,7 +78,7 @@ def main():
     big_int = get_int(file_path)
     prec = 10000
     num_cores = cpu_count()
-    work_items = [(big_int, base, prec) for base in range(2, 10)]
+    work_items = [(big_int, base, prec) for base in range(2, 80)]
     
     with Pool(num_cores) as pool:
         pool.map(check_normal, work_items)

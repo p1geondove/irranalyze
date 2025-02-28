@@ -1,0 +1,5 @@
+/.venv
+/.ven13
+/num_files
+__pycache__
+compile.json
