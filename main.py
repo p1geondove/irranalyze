@@ -1,26 +1,25 @@
-from scripts import bignum
-from scripts.search import search
-from string import ascii_lowercase
-
-def txt_to_num(txt:str):
-    txt = txt.lower()
-    table = {c:f"{p:02d}" for p,c in enumerate(ascii_lowercase)}
-    return "".join(table[c] if c.isalpha() else c for c in txt)
+from scripts.bignum import get_one
+from scripts.convert import txt_to_num
 
 def main():
-    #file = bignum.get_one("pi", 10, "txt")
-    file = bignum.BigNum("/home/p1geon/documents/bignum/Pi - Dec - Chudnovsky 100b.txt")
+    file = get_one("pi", "dec", "txt")
     if file is None:
+        print("no viable file found")
         return
+    print("searching " + str(file))
 
     while True:
         try:
-            pattern = txt_to_num(input("pattern: ")).encode()
-            pos = search(file, pattern)
+            pattern = input("pattern: ")
+            if not pattern.isnumeric():
+                pattern = txt_to_num(pattern)
+            pos = file[pattern]
             print(pos)
         except KeyboardInterrupt:
+            print()
             return
         except EOFError:
+            print()
             return
 
 if __name__ == "__main__":
