@@ -19,7 +19,7 @@ class BigNum:
         self.name = get_const_name(self.path) # somehting like pi, e, gamma ...
         self.base = get_base(self.path) # either "dec" or "hex", unless the file is not from y-crucncher (experimental!)
         self.format = self.path.suffix.split(".")[-1] # either "txt" or "ycd"
-        self.table_name = f"{self.name}_{'dec' if self.base==10 else 'hex'}_{self.format}" # used for sqlite
+        self.table_name = "_".join((self.name, self.base, self.format)) # used for sqlite
         self.intpart, self.radix_pos = get_radix(self.path) # eg pi -> tuple[int,int](3,1) where 3 is the intpart and 1 is the position of the .
         self.size = self.path.stat().st_size - self.radix_pos - 1 # file_size - radix_pos (- off by one error)
         self._first_digits = None # lazy loaded because it can be big
