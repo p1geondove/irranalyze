@@ -128,7 +128,7 @@ def search(file:Path, pattern:bytes, database=True, multithreaded=True):
 
     # 3 if something was found add that to the db
     if database and position != -1:
-        conn = sqlite3.connect(SQLITE_PATH.absolute())
+        conn = sqlite3.connect(SQLITE_PATH)
         cursor = conn.cursor()
 
         if file.suffix == ".txt":
