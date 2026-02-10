@@ -110,17 +110,17 @@ class BigNum:
 
 def get_all(
     name: str | None = None,
-    base: int | None = None,
+    base: str | None = None,
     format: str | None = None,
     size: int | None = None,
     num_dir: str | Path = NUM_DIR,
     recursive = False
 ):
     """ gets all BigNum with specified attributes
-    name (str): constant name like pi, e, catalan ...
-    base (int): base of the number, either 10 or 16
-    size (int): amount of digits after radix point
+    name (str): constant name like "pi", "e", "catalan" ...
+    base (str): base of the number, either "dec" or "hex"
     format (str): either txt or ycd
+    size (int): amount of digits after radix point
     num_dir (str|Path): path to the files
     recursive: scan all subdirectories
     """
@@ -137,16 +137,16 @@ def get_all(
 
 def get_one(
     name: str | None = None,
-    base: int | None = None,
+    base: str | None = None,
     format: str | None = None,
     size: int | None = None,
     num_dir: str | Path = NUM_DIR,
 ):
     """ gets one BigNum with specified attributes
-    name (str): constant name like pi, e, catalan ...
-    base (int): base of the number, either 10 or 16
-    size (int): amount of digits after radix point
+    name (str): constant name like "pi", "e", "catalan" ...
+    base (int): base of the number, either "dec" or "hex"
     format (str): either
+    size (int): amount of digits after radix point
     """
     files = get_all(name, base, format, size, num_dir)
     if files: return files[0]
