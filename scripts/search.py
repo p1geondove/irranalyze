@@ -7,7 +7,7 @@ from mmap import mmap, ACCESS_READ
 from multiprocessing import Process, Value
 
 from .const import CHUNK_SIZE, FIRST_DIGITS_AMOUNT, PAGE_SIZE, SQLITE_PATH
-from .helper import get_table_name, get_radix
+from .helper import identify, get_table_name
 
 def search_st(file:Path|str, pattern:bytes):
     """ simple single threaded search, semi fast but safe and can search any filesize """
@@ -58,7 +58,7 @@ def _serach_mp(file:Path, pattern:bytes, sector:tuple[int,int], position_val):
 def search_mp(file:Path, pattern:bytes, num_workers:int=0):
     """ multiprocessing approach, fast but expensive and potentially lots of overhead """
     num_workers = num_workers or os.cpu_count() or 1
-    _, radix_pos = get_radix(file)
+    _,_,_,_,radix_pos = identify(file)
     num_size = file.stat().st_size - radix_pos
     sector_size = math.ceil(num_size/num_workers) // PAGE_SIZE * PAGE_SIZE
     sectors = []
@@ -87,7 +87,7 @@ def search_mp(file:Path, pattern:bytes, num_workers:int=0):
 
 def search_quick(file:Path, pattern:bytes):
     """ low latency search, but only first couple digits """
-    _, radix_pos = get_radix(file)
+    _,_,_,_,radix_pos = identify(file)
     with file.open("rb") as f:
         f.seek(radix_pos)
         return f.read(FIRST_DIGITS_AMOUNT).find(pattern)
