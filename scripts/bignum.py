@@ -5,7 +5,7 @@ from functools import total_ordering
 from mmap import mmap, ACCESS_READ
 
 from .search import search
-from .helper import check_valid, get_base, get_const_name, get_radix, format_size
+from .helper import format_size, identify, check_valid
 from .const import NUM_DIR, FIRST_DIGITS_AMOUNT
 
 @total_ordering
@@ -13,22 +13,16 @@ class BigNum:
     """ wrapper for file to get matadata """
     def __init__(self, path:str|Path) -> None:
         self.path = Path(path)
-        if not check_valid(self.path):
-            raise ValueError(str(self.path)+" is not a valid number file")
-
-        self.name = get_const_name(self.path) # somehting like pi, e, gamma ...
-        self.base = get_base(self.path) # either "dec" or "hex", unless the file is not from y-crucncher (experimental!)
-        self.format = self.path.suffix.split(".")[-1] # either "txt" or "ycd"
-        self.table_name = "_".join((self.name, self.base, self.format)) # used for sqlite
-        self.intpart, self.radix_pos = get_radix(self.path) # eg pi -> tuple[int,int](3,1) where 3 is the intpart and 1 is the position of the .
+        self.name, self.base, self.format, self.intpart, self.radix_pos = identify(self.path) # sweep it under the rug lol
         self.size = self.path.stat().st_size - self.radix_pos - 1 # file_size - radix_pos (- off by one error)
         self._first_digits = None # lazy loaded because it can be big
-        self._key = (self.name, self.base, self.format) # static key
+        self._key = (self.name, str(self.base), self.format) # static key
+        self.table_name = "_".join(self._key) # used for sqlite
         self._hash = hash(self._key) # also static hash
 
     def __repr__(self) -> str:
         """ eg pi.txt(dec|50M) """
-        return f"{self.name}.{self.format}({self.base}|{format_size(self.size,capitalized=True)})"
+        return f"{self.name}.{self.format}(b{self.base}|{format_size(self.size,capitalized=True)})"
 
     def __len__(self) -> int:
         return self.size
