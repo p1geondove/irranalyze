@@ -26,9 +26,8 @@ def format_time(time: float):
         neg = True
         time = abs(time)
 
-    mag = int(abs(log10(time)-3)//3)
-    prefix = " mun"[mag]
-    return f"{'-' if neg else ''}{time*10**(3*mag):.1f}{prefix}s"
+    mag = min(3,int(abs(log10(time)-3)/3))
+    return f"{'-' if neg else ''}{time*10**(3*mag):.1f}{' mun'[mag]}s"
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -38,91 +37,63 @@ def timer(func):
         return res
     return wrapper
 
-def get_base(file_path:str|Path) -> str:
-    """ return int of base of file """
-    file_path = Path(file_path)
-    chunk = file_path.open("rb").read(1000)
-    name = {10:"dec", 16:"hex"}
-
-    if file_path.suffix == ".txt":
-        return name[len(set(chunk.split(b".")[1]))]
-
-    elif file_path.suffix == ".ycd":
-        return name[int(chunk.split(b"Base:\t")[1].split(b"\r\n\r\n")[0].decode())]
-
-    else:
-        raise NotImplementedError(str(file_path)+" of wrong format, either .txt or .ycd")
-
-def get_const_name(file_path:str|Path) -> str:
-    """ maps file contents to constant name """
-    file_path = Path(file_path)
-
-    if not file_path.is_file():
-        raise FileNotFoundError
-
-    if file_path.suffix == ".txt":
-        chunk = file_path.open("rb").read(10).split(b".")[1][:5]
-
-    elif file_path.suffix == ".ycd":
-        chunk = file_path.open("rb").read(500).split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0]
-        chunk = chunk.split(b".")[1][:5]
-
-    else:
-        raise NotImplementedError(str(file_path)+" of wrong format, either .txt or .ycd")
-
-    if chunk in CONST_TABLE:
-        return CONST_TABLE[chunk]
-
-    return "unknown"
-
-def get_table_name(file_path:str|Path) -> str:
-    file_path = Path(file_path)
-    return "_".join((get_const_name(file_path), get_base(file_path), file_path.suffix[1:]))
-
-def get_radix(file_path:str|Path) -> tuple[int,int]:
-    """ returns int part as well as position of the radix point """
-    file_path = Path(file_path)
-    chunk = file_path.open("rb").read(500)
-    base = 10 if get_base(file_path)=="dec" else 16
-
-    if file_path.suffix == ".txt":
-        radix_pos = chunk.find(b".")
-        intpart = int(chunk[:radix_pos], base)
-
-    elif file_path.suffix == ".ycd":
-        radix_pos = chunk.find(b"EndHeader\r\n\r\n") + 13
-        intpart = int(chunk.split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0].split(b".")[0], base)
-
-    else:
-        raise NotImplementedError(str(file_path)+" of wrong format, either .txt or .ycd")
-
-    return intpart, radix_pos
-
-def check_valid(file_path:str|Path) -> bool:
-    """ checks wether a given file is valid bignum format """
-    file_path = Path(file_path)
-
-    if not file_path.is_file():
-        return False
-
+def identify(file_path:Path) -> tuple[str,int,str,int,int]:
+    """ 
+    unified identify method for number files, raises ValueError if illegal file
+    returns:
+        name      :str (pi,e...)
+        base      :int (10,16)
+        format    :str (txt,ycd)
+        int_part  :int (3,0...)
+        radix_pos :int (1,196...)
+    """
     with file_path.open("rb") as f:
-        chunk = f.read(500)
+        chunk = f.read(1000)
 
-    if file_path.suffix == ".ycd":
-        header_end_idx = chunk.find(b"EndHeader")
-        if header_end_idx == -1:
-            return False
+    format = "ycd" if b"#Compressed Digit File" in chunk else "txt"
 
-        header = chunk[:header_end_idx+1]
-        if not header[:22] == b"#Compressed Digit File":
-            return False
+    if format == "txt":
+        radix_pos = chunk.find(b".")
+        if radix_pos == -1:
+            raise ValueError("no radix point found")
+        int_part = chunk[:radix_pos]
+        frac_part = chunk[radix_pos+1:]
+        base = len(set(frac_part))
 
-        return all(x in header for x in (b"FileVersion", b"Base", b"FirstDigits", b"TotalDigits", b"Blocksize", b"BlockID"))
+    else:
+        radix_pos = chunk.find(b"EndHeader\r\n\r\n") + 13
+        if radix_pos == -1:
+            raise ValueError("no EndHeader found")
+        else:
+            radix_pos += 13
+        base = int(chunk.split(b"Base:\t")[1].split(b"\r\n\r\n")[0].decode())
+        first_digits = chunk.split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0]
+        int_part, frac_part = first_digits.split(b".")
 
-    elif file_path.suffix == ".txt":
-        has_valid_chars = not bool(set(chunk.split(b".")[1]) - set(b"0123456789abcdef"))
-        has_radix = chunk.find(b".") != -1
-        return has_valid_chars and has_radix
+    if not base in (10,16):
+        raise ValueError("illegal base")
 
-    return False
+    if base == 16:
+        num = 0
+        for i,c in enumerate(frac_part[:10],1):
+            num += int(chr(c),16)*16**-i
+    else:
+        num = float(int_part+b"."+frac_part)
 
+    name = CONST_TABLE.get(str(num%1)[2:7], "unknown")
+
+    return name, base, format, int(int_part), radix_pos
+
+def get_table_name(file_path:Path):
+    name, base, format, _, _ = identify(file_path)
+    return "_".join(map(str, (name,base,format)))
+
+def check_valid(file_path:Path):
+    if file_path.suffix not in (".txt", ".ycd"):
+        return False
+    try:
+        identify(file_path)
+    except ValueError:
+        return False
+    else:
+        return True
