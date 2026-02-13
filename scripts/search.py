@@ -3,11 +3,12 @@ from pathlib import Path
 import sys
 import math
 import sqlite3
-from mmap import mmap, ACCESS_READ
+from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 from multiprocessing import Process, Value
 
 from .const import CHUNK_SIZE, FIRST_DIGITS_AMOUNT, PAGE_SIZE, SQLITE_PATH
-from .helper import identify, get_table_name
+from .identify import identify, get_table_name
+from .helper import timer
 
 def search_st(file:Path|str, pattern:bytes):
     """ simple single threaded search, semi fast but safe and can search any filesize """
@@ -33,9 +34,9 @@ def _serach_mp(file:Path, pattern:bytes, sector:tuple[int,int], position_val):
     position = -1
 
     with file.open("r+b") as f:
-        if sys.platform == "linux":
-            os.posix_fadvise(f.fileno(), sector_start, sector_end, os.POSIX_FADV_SEQUENTIAL)
         with mmap(f.fileno(), length=sector_size, offset=sector_start, access=ACCESS_READ) as mm:
+            if sys.platform == "linux":
+                mm.madvise(MADV_SEQUENTIAL)
             while chunk_start < sector_size:
                 chunk_end = chunk_start + CHUNK_SIZE 
                 position = mm.find(pattern, chunk_start, chunk_end)
@@ -99,18 +100,19 @@ def search_db(file:Path, pattern:bytes):
     table_name = get_table_name(file)
     table_exists = bool(cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (table_name, )).fetchone())
     if not table_exists: return -1
-    cursor.execute(f"SELECT position FROM {table_name} WHERE string = ? ORDER BY position ASC LIMIT 1", (pattern.decode(),))
+    cursor.execute(f"""SELECT position FROM "{table_name}" WHERE string = ? ORDER BY position ASC LIMIT 1""", (pattern.decode(),))
     result = cursor.fetchone()
     conn.close()
     if result:
         return result[0]
     return -1
 
+@timer
 def search(file:Path, pattern:bytes, database=True, multithreaded=True):
     """ main search method combines all search methods and potentially fills the database with missing data """
     position = -1
 
-    # 1. check the db if allowed
+# 1. check the db if allowed
     if database:
         position = search_db(file, pattern)
         if position != -1:
@@ -141,9 +143,9 @@ def search(file:Path, pattern:bytes, database=True, multithreaded=True):
 
         if not table_exists:
             string_datatype = "TEXT" if file.suffix == ".txt" else "BLOB"
-            cursor.execute(f"CREATE TABLE {table_name} (string {string_datatype} PRIMARY KEY, position INTEGER)")
+            cursor.execute(f"""CREATE TABLE "{table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
 
-        cursor.execute(f"INSERT OR IGNORE INTO {get_table_name(file)} (string, position) VALUES (?, ?)", (pattern_str, position))
+        cursor.execute(f"""INSERT OR IGNORE INTO "{table_name}" (string, position) VALUES (?, ?)""", (pattern_str, position))
         conn.commit()
         conn.close()
 
