@@ -2,15 +2,16 @@ import os
 import sys
 from pathlib import Path
 from functools import total_ordering
-from mmap import mmap, ACCESS_READ
+from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 
 from .search import search
-from .helper import format_size, identify, check_valid
+from .identify import identify, check_valid
+from .helper import format_size
 from .const import NUM_DIR, FIRST_DIGITS_AMOUNT
 
 @total_ordering
 class BigNum:
-    """ wrapper for file to get matadata """
+    """ wrapper for y-cruncher file to get matadata, search and iterate"""
     def __init__(self, path:str|Path) -> None:
         self.path = Path(path)
         self.name, self.base, self.format, self.intpart, self.radix_pos = identify(self.path) # sweep it under the rug lol
@@ -19,6 +20,8 @@ class BigNum:
         self._key = (self.name, str(self.base), self.format) # static key
         self.table_name = "_".join(self._key) # used for sqlite
         self._hash = hash(self._key) # also static hash
+        self._file = None
+        self._mmap = None
 
     def __repr__(self) -> str:
         """ eg pi.txt(dec|50M) """
@@ -32,19 +35,13 @@ class BigNum:
         if isinstance(i, int): # key == int
             if i < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
-            with self.path.open() as f:
-                f.seek(i + self.radix_pos)
-                return f.read(1)
+            return self.mmap[i]
 
         if isinstance(i, slice): # key == slice
-            if i.stop < FIRST_DIGITS_AMOUNT:
+            if i.stop and i.stop < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
 
-            i = slice(i.start+self.radix_pos, i.stop+self.radix_pos, i.step)
-
-            with self.path.open("r+b") as file:
-                with mmap(file.fileno(), length=0, access=ACCESS_READ) as mm:
-                    return mm[i]
+            return self.mmap[i]
 
         if isinstance(i, str): # key == str
             return search(self.path, i.encode())
@@ -54,15 +51,10 @@ class BigNum:
 
     def __iter__(self):
         """ yields digits after radix point """
-        with self.path.open("r+b") as file:
-            if sys.platform == "linux":
-                os.posix_fadvise(file.fileno(), self.radix_pos, self.size, os.POSIX_FADV_SEQUENTIAL)
-            with mmap(file.fileno(), length=0, access=ACCESS_READ) as mm:
-                # this is the only solution i found, but its the jankies jank to ever jank i feel like, but able to iterate over files that are bigger than ram and doesnt use chunking, probably the most efficient way
-                i = iter(mm)
-                for _ in range(self.radix_pos+1):
-                    next(i)
-                yield from i
+        i = iter(self.mmap)
+        for _ in range(self.radix_pos+1):
+            next(i)
+        yield from i
 
     def __contains__(self, pattern:str|bytes) -> bool:
         """ should technically always return true, but its for the limited file only :P """
@@ -93,6 +85,18 @@ class BigNum:
             return NotImplemented
         return self._key == other._key
 
+    def __del__(self):
+        try:
+            self.close()
+        except Exception as e:
+            print(f"CRITICAL: Exception when closing {self}: {e}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     @property
     def first_digits(self) -> str|bytes:
         """ small section of the number, usually 1mio digits after radix """
@@ -102,9 +106,33 @@ class BigNum:
         self._first_digits = digits.decode() if self.format == "txt" else digits
         return self._first_digits
 
+    @property
+    def mmap(self):
+        if self._mmap:
+            return self._mmap
+
+        if self._file is None:
+            self._file = self.path.open("r+b")
+
+        self._mmap = mmap(self._file.fileno(), length=0, access=ACCESS_READ)
+
+        if sys.platform == "linux":
+            self._mmap.madvise(MADV_SEQUENTIAL)
+
+        return self._mmap
+
+    def close(self):
+        if self._mmap:
+            self._mmap.close()
+            self._mmap = None
+        if self._file:
+            self._file.close()
+            self._file = None
+
+
 def get_all(
     name: str | None = None,
-    base: str | None = None,
+    base: int | None = None,
     format: str | None = None,
     size: int | None = None,
     num_dir: str | Path = NUM_DIR,
@@ -131,7 +159,7 @@ def get_all(
 
 def get_one(
     name: str | None = None,
-    base: str | None = None,
+    base: int | None = None,
     format: str | None = None,
     size: int | None = None,
     num_dir: str | Path = NUM_DIR,
