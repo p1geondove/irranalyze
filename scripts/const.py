@@ -6,6 +6,7 @@ CHUNK_SIZE = 8*2**20
 FIRST_DIGITS_AMOUNT = 1_000_000
 PAGE_SIZE = os.sysconf('SC_PAGE_SIZE')
 SQLITE_PATH = Path("irranalyze.sqlite")
+IDENTIFY_TABLE_NAME = "identify"
 CONST_TABLE = {
     "41421":"sqrt2",
     "73205":"sqrt3",
