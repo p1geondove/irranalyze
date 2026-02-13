@@ -1,8 +1,8 @@
-from scripts.bignum import get_one
-from scripts.convert import txt_to_num
+from scripts import *
 
 def main():
-    file = get_one("pi", "dec", "txt")
+    file = get_one("pi", 10, "txt")
+    # file = BigNum("/home/p1geon/documents/bignum/e - Dec - exp(1) 100b.txt")
     if file is None:
         print("no viable file found")
         return
