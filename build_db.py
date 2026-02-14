@@ -1,14 +1,15 @@
-#!/usr/bin/python
-
 import sqlite3
+import argparse
+
 from itertools import chain
 from threading import Thread, Lock
 from queue import Queue
 from time import perf_counter, sleep
 
 from scripts.bignum import BigNum, get_all
-from scripts.const import SQLITE_PATH, FIRST_DIGITS_AMOUNT, IDENTIFY_TABLE_NAME
+from scripts.const import *
 from scripts.helper import format_size, format_time
+from scripts.identify import check_valid
 
 def build_identifier():
     from hashlib import md5
@@ -197,32 +198,6 @@ def build_identifier():
     conn.close()
     print("\ndone building identifier table")
 
-class SharedMem:
-    file_queue:Queue[BigNum] = Queue()
-    db_lock:Lock = Lock()
-    amt_digits:int
-    substring_len:int
-
-    files_total:int = 0
-    files_done:int = 0
-    patterns_total:int = 0
-    patterns_done:int = 0
-    done:bool = False
-
-def progress(mem:SharedMem):
-    time_start = perf_counter()
-    patterns_total = mem.amt_digits * mem.substring_len * mem.files_total
-
-    while not mem.done:
-        sleep(0.2)
-        if mem.patterns_done == 0: continue
-        time_elapsed = perf_counter() - time_start
-        time_elapsed_f = format_time(time_elapsed)
-        speed_pattern = mem.patterns_done / time_elapsed
-        speed_pattern_f = format_size(speed_pattern, "/s")
-        eta = format_time(patterns_total / speed_pattern - time_elapsed)
-        print(" "*100+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{mem.files_done}/{mem.files_total}", end=" "*10+"\r")
-
 def get_patterns(chunk:str|bytes, max_length:int=10, offset:int=0):
     positions = chain.from_iterable((x+offset,)*max_length for x in range(len(chunk)-max_length))
     patterns = []
@@ -232,64 +207,73 @@ def get_patterns(chunk:str|bytes, max_length:int=10, offset:int=0):
             patterns.append(part)
     return zip(patterns, positions)
 
-def _build_const(mem:SharedMem):
+def build_const(amount_digits:int, max_substring_len:int, file:Path|None):
+    if file and check_valid(file):
+        nums = [BigNum(file)]
+    else:
+        nums = set(get_all())
+
+    time_start = perf_counter()
+    patterns_done = 0
+    patterns_total = amount_digits * max_substring_len * len(nums)
+    files_done = 0
+    files_total = len(nums)
+
     conn = sqlite3.connect(SQLITE_PATH)
     cursor = conn.cursor()
-    patterns_per_insert = 100000
-    substring_len = mem.substring_len
-    amt_digits = mem.amt_digits
 
-    while not mem.file_queue.empty():
-        num = mem.file_queue.get()
+    for num in nums:
+        string_datatype = "TEXT" if num.format == "txt" else "BLOB"
+        print(f"creating table {num.table_name} of type {string_datatype} | INTEGER")
+        cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
 
-        with mem.db_lock:
-            string_datatype = "TEXT" if num.format == "txt" else "BLOB"
-            print(f"creating table {num.table_name} of type {string_datatype} | INTEGER")
-            cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
+        for startpos in range(0, amount_digits, NUMS_PER_INSERT):
+            chunk = num[startpos : startpos + NUMS_PER_INSERT]
+            patterns = get_patterns(chunk, max_substring_len, startpos+1)
+            cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
+            conn.commit()
+            patterns_done += NUMS_PER_INSERT * max_substring_len
 
-        for startpos in range(0, amt_digits, patterns_per_insert):
-            chunk = num[startpos:startpos+patterns_per_insert]
-            patterns = get_patterns(chunk, substring_len, startpos+1)
-            with mem.db_lock:
-                cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
-                conn.commit()
-            mem.patterns_done += substring_len * patterns_per_insert
-        mem.files_done += 1
+            # progress printing
+            time_elapsed = perf_counter() - time_start
+            time_elapsed_f = format_time(time_elapsed)
+            speed_pattern = patterns_done / time_elapsed
+            speed_pattern_f = format_size(speed_pattern, "/s")
+            eta = format_time(patterns_total / speed_pattern - time_elapsed)
+            print(" "*100+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{files_done}/{files_total}", end=" "*10+"\r")
 
-def build_const(amount_digits:int=-1, max_substring_len:int=10, num_workers:int=4):
-    time_start = perf_counter()
-
-    if amount_digits==-1:
-        amount_digits = FIRST_DIGITS_AMOUNT
-
-    mem = SharedMem()
-    mem.amt_digits = amount_digits
-    mem.substring_len = max_substring_len
-
-    for num in set(get_all()):
-        mem.files_total += 1
-        mem.file_queue.put(num)
-
-    prog = Thread(target=progress, args=(mem, ))
-
-    threads = []
-    for _ in range(num_workers):
-        t = Thread(target=_build_const, args=(mem,))
-        t.start()
-        threads.append(t)
-
-    prog.start()
-
-    for t in threads:
-        t.join()
-
-    mem.done = True
-    prog.join()
-    time_total = perf_counter() - time_start
-
-    print(f"whoppa... made a {format_size(SQLITE_PATH.stat().st_size, 'b')} big db in {format_time(time_total)}")
+        files_done += 1
 
 if __name__ == "__main__":
-    SQLITE_PATH.unlink(True)
-    build_identifier()
-    build_const(10**6,6)
+    parser = argparse.ArgumentParser(
+        prog="build_db.py",
+        description="Builds db with constants identify table as well as a few search values",
+    )
+
+    parser.add_argument("-yc", default=NUM_DIR, help="directory path to y-cruncher numbers")
+    parser.add_argument("-db", default=SQLITE_PATH, help="path to sqlite database")
+    parser.add_argument("-d", "--digits", default=1_000_000, help="first n digits/bytes")
+    parser.add_argument("-s", "--substring", default=6, help="maximum size of substring")
+    parser.add_argument("-f", "--file", default=None, help="only generate one table for this constant")
+    parser.add_argument("-i", "--identify", action="store_true", help="switch to enable building indentify table")
+    parser.add_argument("-n", "--nums", action="store_true", help="switch to enable search string baking")
+
+    args = parser.parse_args()
+
+    if args.yc != NUM_DIR:
+        settings = json.load(SETTINGS_PATH.open())
+        settings["NUM_DIR"] = args.yc
+        json.dump(settings, SETTINGS_PATH.open("w"))
+        print(f"updated setting NUM_DIR to {args.yc}")
+
+    if args.db != SQLITE_PATH:
+        settings = json.load(SETTINGS_PATH.open())
+        settings["SQLITE_PATH"] = args.db
+        json.dump(settings, SETTINGS_PATH.open("w"))
+        print(f"updated setting SQLITE_PATH to {args.db}")
+
+    if args.identify:
+        build_identifier()
+
+    if args.nums:
+        build_const(args.digits, args.substring, args.file)
