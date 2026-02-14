@@ -128,10 +128,11 @@ def build_identifier():
                 return True
         return False
 
+    # inputs to functions 0->10 & 1/2->1/10 & some special ones
     inputs = [
         (x,str(x)) for x in range(11)
     ] + [
-        (1/mpmath.mpf(x),"1/"+str(x)) for x in range(1,11)
+        (1/mpmath.mpf(x),"1/"+str(x)) for x in range(2,11)
     ] + [
         (root2,"root2"),
         (root3,"root3"),
@@ -207,11 +208,18 @@ def get_patterns(chunk:str|bytes, max_length:int=10, offset:int=0):
             patterns.append(part)
     return zip(patterns, positions)
 
-def build_const(amount_digits:int, max_substring_len:int, file:Path|None):
-    if file and check_valid(file):
-        nums = [BigNum(file)]
+def build_const(amount_digits:int, max_substring_len:int, file:str|None):
+    nums = []
+    if file:
+        _file = Path(file)
+        if check_valid(_file):
+            nums = [BigNum(_file)]
     else:
         nums = set(get_all())
+
+    if not nums:
+        print("no files found for precompute, exiting")
+        return
 
     time_start = perf_counter()
     patterns_done = 0
@@ -223,13 +231,12 @@ def build_const(amount_digits:int, max_substring_len:int, file:Path|None):
     cursor = conn.cursor()
 
     for num in nums:
-        string_datatype = "TEXT" if num.format == "txt" else "BLOB"
-        print(f"creating table {num.table_name} of type {string_datatype} | INTEGER")
-        cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
+        print(f"creating table {num.table_name}"+" "*50)
+        cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
         for startpos in range(0, amount_digits, NUMS_PER_INSERT):
             chunk = num[startpos : startpos + NUMS_PER_INSERT]
-            patterns = get_patterns(chunk, max_substring_len, startpos+1)
+            patterns = get_patterns(chunk, max_substring_len, startpos+1) # this always yields bytes
             cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
             conn.commit()
             patterns_done += NUMS_PER_INSERT * max_substring_len
@@ -243,6 +250,8 @@ def build_const(amount_digits:int, max_substring_len:int, file:Path|None):
             print(" "*100+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{files_done}/{files_total}", end=" "*10+"\r")
 
         files_done += 1
+
+    print("done building search string table(s)")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -276,4 +285,4 @@ if __name__ == "__main__":
         build_identifier()
 
     if args.nums:
-        build_const(args.digits, args.substring, args.file)
+        build_const(int(args.digits), int(args.substring), args.file)
