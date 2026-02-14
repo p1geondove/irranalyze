@@ -100,22 +100,23 @@ def search_db(file:Path, pattern:bytes):
     table_name = get_table_name(file)
     table_exists = bool(cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (table_name, )).fetchone())
     if not table_exists: return -1
-    cursor.execute(f"""SELECT position FROM "{table_name}" WHERE string = ? ORDER BY position ASC LIMIT 1""", (pattern.decode(),))
+    cursor.execute(f"""SELECT position FROM "{table_name}" WHERE string = ? ORDER BY position ASC LIMIT 1""", (pattern,))
     result = cursor.fetchone()
     conn.close()
     if result:
         return result[0]
     return -1
 
-@timer
 def search(file:Path, pattern:bytes, database=True, multithreaded=True):
     """ main search method combines all search methods and potentially fills the database with missing data """
     position = -1
+    in_db = False
 
-# 1. check the db if allowed
+    # 1. check the db if allowed
     if database:
         position = search_db(file, pattern)
         if position != -1:
+            in_db = True
             return position
 
     # 2. conventinal search
@@ -128,24 +129,23 @@ def search(file:Path, pattern:bytes, database=True, multithreaded=True):
         else:
             position = search_st(file, pattern)
 
-    # 3 if something was found add that to the db
-    if database and position != -1:
+    # 3 if something was found thats not already in db and the files constant is known add that to the db
+    if database and position != -1 and not in_db:
+        name,base,format,_,_ = identify(file)
+
+        # dont try to add anything to db when the constant is unknown
+        if name == "unknown":
+            return position
+        
         conn = sqlite3.connect(SQLITE_PATH)
         cursor = conn.cursor()
-
-        if file.suffix == ".txt":
-            pattern_str = pattern.decode()
-        else:
-            pattern_str = pattern
-
-        table_name = get_table_name(file)
+        table_name = "_".join((name,str(base),format))
         table_exists = bool(cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (table_name, )).fetchone())
 
         if not table_exists:
-            string_datatype = "TEXT" if file.suffix == ".txt" else "BLOB"
-            cursor.execute(f"""CREATE TABLE "{table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
-
-        cursor.execute(f"""INSERT OR IGNORE INTO "{table_name}" (string, position) VALUES (?, ?)""", (pattern_str, position))
+            # string_datatype = "TEXT" if file.suffix == ".txt" else "BLOB"
+            cursor.execute(f"""CREATE TABLE "{table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
+        cursor.execute(f"""INSERT OR IGNORE INTO "{table_name}" (string, position) VALUES (?, ?)""", (pattern, position))
         conn.commit()
         conn.close()
 
