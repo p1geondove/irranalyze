@@ -1,4 +1,5 @@
 import sys
+
 from pathlib import Path
 from functools import total_ordering
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
@@ -29,6 +30,7 @@ class BigNum:
         return f"{self.name}.{self.format}(b{self.base}|{format_size(self.size,capitalized=True)})"
 
     def __len__(self) -> int:
+        """ returns amount of bytes after radix"""
         return self.size
 
     def __getitem__(self, i) -> str|bytes|int|None:
@@ -36,12 +38,13 @@ class BigNum:
         if isinstance(i, int): # key == int
             if i < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
+            i += self.radix_pos+1
             return self.mmap[i]
 
         if isinstance(i, slice): # key == slice
             if i.stop and i.stop < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
-
+            i = slice(i.start+self.radix_pos+1, i.stop+self.radix_pos+1, i.step)
             return self.mmap[i]
 
         if isinstance(i, str): # key == str
@@ -103,12 +106,18 @@ class BigNum:
         """ small section of the number, usually 1mio digits after radix """
         if self._first_digits:
             return self._first_digits
+        
+        if self._file is None:
+            self._file = self.path.open("r+b")
+        self._file.seek(self.radix_pos)
+
         digits = self.path.open("rb").read(FIRST_DIGITS_AMOUNT)[self.radix_pos+1:]
         self._first_digits = digits.decode() if self.format == "txt" else digits
         return self._first_digits
 
     @property
     def mmap(self):
+        """ mmap object of the file """
         if self._mmap:
             return self._mmap
 
@@ -123,6 +132,7 @@ class BigNum:
         return self._mmap
 
     def close(self):
+        """ closes potentially open file and mmap object """
         if self._mmap:
             self._mmap.close()
             self._mmap = None
@@ -130,9 +140,27 @@ class BigNum:
             self._file.close()
             self._file = None
 
-    def to_base(self, base:int|str|list[str], amount_digits:int=-1):
-        if amount_digits == -1:
-            amount_digits = self.size
+    def to_base(self, base:int|str|list[str], digits:int=-1) -> str:
+        """
+        convert number to a different base
+        
+        :param base: base notation, see below
+        :type base: int | str | list[str]
+        :param digits: amount of digits to return
+        :type digits: int
+
+        raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
+        
+         - if int is provided as base parameter is will use notation[:base]. special case is -1, with that it will use the entire thing
+         - if list[str] is provided as base parameter it will treat each element as a digit
+         - if str is provided as base parameter there are some special cases:
+           - abc -> all lower case letters
+           - ABC -> lowercase + uppercase
+           - alnum -> lowercase + uppercase + digits
+           - anything else will be used directly, like list[str]
+        """
+        if digits == -1:
+            digits = self.size
 
         # determine size of base notation
         if isinstance(base,int):
@@ -150,7 +178,7 @@ class BigNum:
                 base_len = len(base)
 
         # how many digits are needed for given base size (ignore ycd compression)
-        digits_needed = int(amount_digits*log(base_len)/log(self.base)+1)
+        digits_needed = int(digits*log(base_len)/log(self.base)+1)
 
         if self.format == "ycd":
             num_str = ycd_to_str(self.path, digits_needed)
@@ -162,13 +190,12 @@ class BigNum:
                 raise ValueError(f"fracpart is not type str {type(_frac)}")
             num_str = str(self.intpart) + "." + _frac
             if base == self.base:
-                return num_str[:amount_digits]
+                return num_str[:digits]
 
         if self.base == 16:
             num_str = hex_to_dec(num_str)
 
-        return base_convert(num_str, base, amount_digits)
-
+        return base_convert(num_str, base, digits)
 
 def get_all(
     name: str | None = None,
@@ -178,13 +205,20 @@ def get_all(
     num_dir: str | Path = NUM_DIR,
     recursive = False
 ):
-    """ gets all BigNum with specified attributes
-    name (str): constant name like "pi", "e", "catalan" ...
-    base (str): base of the number, either "dec" or "hex"
-    format (str): either txt or ycd
-    size (int): amount of digits after radix point
-    num_dir (str|Path): path to the files
-    recursive: scan all subdirectories
+    """
+    gets all BigNum with specified attributes
+    
+    :param name: constant name like "pi", "e", "catalan" ...
+    :type name: str | None
+    :param base: base of the number, either "dec" or "hex"
+    :type base: int | None
+    :param format: either txt or ycd
+    :type format: str | None
+    :param size: amount of digits after radix point
+    :type size: int | None
+    :param num_dir: path to the files
+    :type num_dir: str | Path
+    :param recursive: scan all subdirectories
     """
     num_dir = Path(num_dir)
     if recursive:
@@ -203,12 +237,22 @@ def get_one(
     format: str | None = None,
     size: int | None = None,
     num_dir: str | Path = NUM_DIR,
+    recursive = False
 ):
-    """ gets one BigNum with specified attributes
-    name (str): constant name like "pi", "e", "catalan" ...
-    base (int): base of the number, either "dec" or "hex"
-    format (str): either
-    size (int): amount of digits after radix point
+    """
+    gets one BigNum with specified attributes
+    
+    :param name: constant name like "pi", "e", "catalan" ...
+    :type name: str | None
+    :param base: base of the number, either "dec" or "hex"
+    :type base: int | None
+    :param format: either txt or ycd
+    :type format: str | None
+    :param size: amount of digits after radix point
+    :type size: int | None
+    :param num_dir: path to the files
+    :type num_dir: str | Path
+    :param recursive: scan all subdirectories
     """
     files = get_all(name, base, format, size, num_dir)
     if files: return files[0]
