@@ -11,56 +11,56 @@ theres a unified search function that houses all other search functions. In ther
 
 that unified search function also adds stuff to the database if enabled and not found on there
 
-# expected values:
-### pi:
-| position    | string    |
-|-------------|-----------|
-|           1 | 1         |
-|         148 | 12        |
-|       1_924 | 123       |
-|      13_807 | 1234      |
-|      49_702 | 12345     |
-|   2_458_885 | 123456    |
-|   9_470_344 | 1234567   |
-| 186_557_266 | 12345678  |
-| 523_551_502 | 123456789 |
-|          94 | 11        |
-|         153 | 111       |
-|      12_700 | 1111      |
-|      32_788 | 11111     |
-|     255_945 | 111111    |
-|   4_657_555 | 1111111   |
-| 159_090_113 | 11111111  |
-| 812_432_526 | 111111111 |
-|         762 | 999999    |
-|   1_722_776 | 9999999   |
+# usage
+```
+>>> from scripts import *
+>>> get_all()
+[pi.txt(b10|50M), pi.txt(b10|1G)]
+>>> set(_) # nums with different sizes are considered the same
+{pi.txt(b10|50M)}
 
-look a christmas tree :)
+>>> pi = get_one("pi")
+>>> pi[:10] # subscriptable
+'1415926535'
 
-stuff is one indexed to align with this website: https://www.angio.net/pi/ 
+>>> pi["5926"] # can be used for searching
+4
+
+>>> pi = get_one("pi",16,"ycd") # hex and .ycd files are fine
+>>> pi[:10]
+b'\xd3\x08\xa3\x85\x88j?$Ds'
+
+>>> for d in pi: # iterable
+...     print(d)
+b'\xd3'
+b'\x08'
+b'\xa3'
+b'\x85'
+[...]
+
+>>> pi.to_base(10, digits=10) # base conversion
+'3.14159265'
+
+>>> pi.to_base("alnum", digits=10) # predefined special bases
+'3.8UYOxDus'
+
+pi.to_base("😀😃😄😁😆😅🤣😂🙂🙃🫠😉😊😇🥰😍🤩😘😗☺️😚😙🥲😋😛😜🤪😝",digits=50) # or custom
+'😁.😆😁😄🙂🥲😀😊☺😜😙☺😜😊😉🙃😗😆😂😉🥰😜🫠🥰😘🙃🥲😂🤪😜😀😛😉😊😋😆😆🙂😄😊😛😗️😇🫠☺😗😊️'
+```
+
+# installation
+ - `git clone https://github.com/p1geondove/irranalyze.git`
+ - `cd irranalyze`
+ - `uv venv`
+ - `uv sync`
+ - `uv run build_db.py -i` (run build_db.py -h to get a overview of arguments)
+ - `uv run main.py`
+
+ theres a settings.json to set paths of the sqlite file as well as the y-cruncher directory.
+ if you run build_db.py with path to db or y-cruncher those paths will be saved into the json aswell.
+ if you run build_db.py without those it will use the values from setting.json.
 
 # TODO
-- write convert.py
-  - convert.base(file:Path,base:int|str) -> str
-    - can take either a number or a string, where the string is the custom base notation
-    - maybe make it a generator
-    - maybe make it fixed length
-
-  - convert.num_to_text(num:str) -> str
-    - takes something like '000102' and turn it to 'abc'
-
-  - convert.text_to_num(txt:str) -> str
-    - takes something like 'abc' and turns it to '000102'
-
-- clean up build.py
-  - argparse
-    - files directory, maybe single file aswell
-    - max length
-    - single/multithreaded switch
-  - figure out if multithreaded makes sense
-    - fighting for lock
-    - increase patterns per puts
-    - use better db lol
 
 - add nice tui
   - searching / listing available files
@@ -68,8 +68,3 @@ stuff is one indexed to align with this website: https://www.angio.net/pi/
   - interactive search
 
 - add more comments, make more readable/digestable
-- write more sensible readme, be less autistic
-
-### this is giga stupid what am i doing with my life
-#### hey thats highlited as green in my editor, i really like this green
-##### omg that purple :3, even cooler lol
