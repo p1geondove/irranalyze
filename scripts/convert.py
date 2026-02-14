@@ -5,17 +5,54 @@ import mpmath
 import gmpy2
 
 def txt_to_num(txt:str) -> str:
+    """
+    converts alphabetic string to numeric string
+    
+    :param txt: alphabetic string
+    :type txt: str
+    :return: numeric string
+    :rtype: str
+
+    can be treated as the inverse to num_to_txt()
+
+    txt_to_num("number") -> "132012010417"
+    """
+    if not txt.isalpha():
+        raise ValueError("input must be alphabetic")
     txt = txt.lower()
-    table = {c:f"{p:02d}" for p,c in enumerate(ascii_lowercase)}
-    return "".join(table[c] if c.isalpha() else c for c in txt)
+    return "".join(f"{c-97:02d}" for c in map(ord,txt))
 
 def num_to_txt(num:str) -> str:
+    """
+    converts numeric string to alphabetic string
+    
+    :param num: numeric string
+    :type num: str
+    :return: lowercase alphabetic string
+    :rtype: str
+
+    pairs up the input string and calls chr(p%26+97) for every pair
+
+    can be treated as the inverse to txt_to_num()
+
+    txt_to_num("132012010417") -> "number"
+    """
     if not num.isnumeric():
         raise ValueError("input must be numeric")
     pairs = (int(a+b) for a,b in zip(num[::2], num[1::2]))
-    return "".join(chr(p+97) for p in pairs)
+    return "".join(chr(p%26+97) for p in pairs)
 
-def ycd_to_str(file_path:Path, amount_digits:int=1000):
+def ycd_to_str(file_path:Path, amount_digits:int=1000) -> str:
+    """
+    converts compressed .ycd file to string, base wont be converted
+    
+    :param file_path: path to the .ycd file
+    :type file_path: Path
+    :param amount_digits: amount of digits to return
+    :type amount_digits: int
+    :return: base converted number
+    :rtype: str
+    """
     with file_path.open("rb") as f:
         chunk = f.read(amount_digits + 500) # +500 to account for header (usually ~200bytes)
 
@@ -45,7 +82,15 @@ def ycd_to_str(file_path:Path, amount_digits:int=1000):
 
     return num
 
-def hex_to_dec(in_str:str, amount_digits:int=-1):
+def hex_to_dec(in_str:str, amount_digits:int=-1) -> str:
+    """
+    converts a decimal string to hexadecimal
+    
+    :param in_str: decimal string
+    :type in_str: str
+    :param amount_digits: amount of digits to return
+    :type amount_digits: int
+    """
     if amount_digits == -1:
         amount_digits = int(19/16*len(in_str))
     mpmath.mp.dps = amount_digits
@@ -55,7 +100,25 @@ def hex_to_dec(in_str:str, amount_digits:int=-1):
         num += int(d,16)*16**(-p)
     return str(num)
 
-def base_convert(dec_str:str, base:int|str|list[str]|None = None, digits:int|None = None):
+def base_convert(dec_str:str, base:int|str|list[str]|None = None, digits:int|None = None) -> str:
+    """
+    convert number to a different base
+    
+    :param base: base notation, see below
+    :type base: int | str | list[str]
+    :param digits: amount of digits to return
+    :type digits: int
+
+    raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
+    
+    - if int is provided as base parameter is will use notation[:base]. special case is -1, with that it will use the entire thing
+    - if list[str] is provided as base parameter it will treat each element as a digit
+    - if str is provided as base parameter there are some special cases:
+    - abc -> all lower case letters
+    - ABC -> lowercase + uppercase
+    - alnum -> lowercase + uppercase + digits
+    - anything else will be used directly, like list[str]
+    """
     base_chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
 
     if isinstance(base, str): # determine base notation
