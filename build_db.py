@@ -6,7 +6,7 @@ from threading import Thread, Lock
 from queue import Queue
 from time import perf_counter, sleep
 
-from scripts.bignum import BigNum, get_all, get_one
+from scripts.bignum import BigNum, get_all
 from scripts.const import SQLITE_PATH, FIRST_DIGITS_AMOUNT, IDENTIFY_TABLE_NAME
 from scripts.helper import format_size, format_time
 
@@ -248,7 +248,7 @@ def _build_const(mem:SharedMem):
             cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string {string_datatype} PRIMARY KEY, position INTEGER)""")
 
         for startpos in range(0, amt_digits, patterns_per_insert):
-            chunk = num.first_digits[startpos:startpos+patterns_per_insert]
+            chunk = num[startpos:startpos+patterns_per_insert]
             patterns = get_patterns(chunk, substring_len, startpos+1)
             with mem.db_lock:
                 cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
@@ -261,9 +261,6 @@ def build_const(amount_digits:int=-1, max_substring_len:int=10, num_workers:int=
 
     if amount_digits==-1:
         amount_digits = FIRST_DIGITS_AMOUNT
-    if amount_digits > FIRST_DIGITS_AMOUNT:
-        print(f"WARN: CLIPPED AMOUNT OF DIGITS TO {FIRST_DIGITS_AMOUNT}")
-        print(f"Currently only small sector sizes allowed, to modify, change 'FIRST_DIGITS_AMOUNT' in .const")
 
     mem = SharedMem()
     mem.amt_digits = amount_digits

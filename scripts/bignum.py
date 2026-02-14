@@ -1,11 +1,12 @@
-import os
 import sys
 from pathlib import Path
 from functools import total_ordering
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
+from math import log
 
 from .search import search
 from .identify import identify, check_valid
+from .convert import base_convert, hex_to_dec, ycd_to_str
 from .helper import format_size
 from .const import NUM_DIR, FIRST_DIGITS_AMOUNT
 
@@ -128,6 +129,45 @@ class BigNum:
         if self._file:
             self._file.close()
             self._file = None
+
+    def to_base(self, base:int|str|list[str], amount_digits:int=-1):
+        if amount_digits == -1:
+            amount_digits = self.size
+
+        # determine size of base notation
+        if isinstance(base,int):
+            base_len = base
+        elif isinstance(base,list):
+            base_len = len(base)
+        elif isinstance(base, str):
+            if base == "abc":
+                base_len = 26
+            elif base == "ABC":
+                base_len = 52
+            elif base == "alnum":
+                base_len = 62
+            else:
+                base_len = len(base)
+
+        # how many digits are needed for given base size (ignore ycd compression)
+        digits_needed = int(amount_digits*log(base_len)/log(self.base)+1)
+
+        if self.format == "ycd":
+            num_str = ycd_to_str(self.path, digits_needed)
+        else:
+            _frac = self[:digits_needed]
+            if isinstance(_frac,bytes):
+                _frac = _frac.decode()
+            if not isinstance(_frac, str):
+                raise ValueError(f"fracpart is not type str {type(_frac)}")
+            num_str = str(self.intpart) + "." + _frac
+            if base == self.base:
+                return num_str[:amount_digits]
+
+        if self.base == 16:
+            num_str = hex_to_dec(num_str)
+
+        return base_convert(num_str, base, amount_digits)
 
 
 def get_all(
