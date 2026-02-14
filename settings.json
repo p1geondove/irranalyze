@@ -1,0 +1,5 @@
+{
+  "SQLITE_PATH":"./irranalyze.sqlite",
+  "NUM_DIR":"/home/p1geon/bignum/",
+  "NUMS_PER_INSERT":100000
+}
