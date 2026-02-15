@@ -7,7 +7,7 @@ from math import log
 
 from .search import search
 from .identify import identify, check_valid
-from .convert import base_convert, hex_to_dec, ycd_to_str
+from .convert import base_convert, hex_to_dec, ycd_to_str, txt_to_num, alnum_to_num
 from .helper import format_size
 from .const import NUM_DIR, FIRST_DIGITS_AMOUNT
 
@@ -16,6 +16,8 @@ class BigNum:
     """ wrapper for y-cruncher file to get matadata, search and iterate"""
     def __init__(self, path:str|Path) -> None:
         self.path = Path(path)
+        if not self.path.exists():
+            return
         self.name, self.base, self.format, self.intpart, self.radix_pos = identify(self.path) # sweep it under the rug lol
         self.size = self.path.stat().st_size - self.radix_pos - 1 # file_size - radix_pos (- off by one error)
         self._first_digits = None # lazy loaded because it can be big
@@ -48,6 +50,10 @@ class BigNum:
             return self.mmap[i]
 
         if isinstance(i, str): # key == str
+            if i.isalpha():
+                i = txt_to_num(i)
+            if i.isalnum():
+                i = alnum_to_num(i)
             return search(self.path, i.encode())
 
         if isinstance(i, bytes): # key == bytes
@@ -106,13 +112,13 @@ class BigNum:
         """ small section of the number, usually 1mio digits after radix """
         if self._first_digits:
             return self._first_digits
-        
+
         if self._file is None:
             self._file = self.path.open("r+b")
-        self._file.seek(self.radix_pos)
 
-        digits = self.path.open("rb").read(FIRST_DIGITS_AMOUNT)[self.radix_pos+1:]
-        self._first_digits = digits.decode() if self.format == "txt" else digits
+        self._file.seek(self.radix_pos)
+        self._first_digits = self._file.read(FIRST_DIGITS_AMOUNT)
+
         return self._first_digits
 
     @property
@@ -126,8 +132,8 @@ class BigNum:
 
         self._mmap = mmap(self._file.fileno(), length=0, access=ACCESS_READ)
 
-        if sys.platform == "linux":
-            self._mmap.madvise(MADV_SEQUENTIAL)
+        #if sys.platform == "linux":
+        self._mmap.madvise(MADV_SEQUENTIAL)
 
         return self._mmap
 
@@ -143,14 +149,12 @@ class BigNum:
     def to_base(self, base:int|str|list[str], digits:int=-1) -> str:
         """
         convert number to a different base
-        
         :param base: base notation, see below
         :type base: int | str | list[str]
         :param digits: amount of digits to return
         :type digits: int
 
         raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
-        
          - if int is provided as base parameter is will use notation[:base]. special case is -1, with that it will use the entire thing
          - if list[str] is provided as base parameter it will treat each element as a digit
          - if str is provided as base parameter there are some special cases:
@@ -207,7 +211,6 @@ def get_all(
 ):
     """
     gets all BigNum with specified attributes
-    
     :param name: constant name like "pi", "e", "catalan" ...
     :type name: str | None
     :param base: base of the number, either "dec" or "hex"
@@ -241,7 +244,6 @@ def get_one(
 ):
     """
     gets one BigNum with specified attributes
-    
     :param name: constant name like "pi", "e", "catalan" ...
     :type name: str | None
     :param base: base of the number, either "dec" or "hex"
@@ -254,6 +256,6 @@ def get_one(
     :type num_dir: str | Path
     :param recursive: scan all subdirectories
     """
-    files = get_all(name, base, format, size, num_dir)
+    files = get_all(name, base, format, size, num_dir, recursive)
     if files: return files[0]
 

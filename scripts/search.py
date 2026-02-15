@@ -35,8 +35,8 @@ def _serach_mp(file:Path, pattern:bytes, sector:tuple[int,int], position_val):
 
     with file.open("r+b") as f:
         with mmap(f.fileno(), length=sector_size, offset=sector_start, access=ACCESS_READ) as mm:
-            if sys.platform == "linux":
-                mm.madvise(MADV_SEQUENTIAL)
+            #if sys.platform == "linux":
+            mm.madvise(MADV_SEQUENTIAL)
             while chunk_start < sector_size:
                 chunk_end = chunk_start + CHUNK_SIZE 
                 position = mm.find(pattern, chunk_start, chunk_end)
@@ -136,7 +136,7 @@ def search(file:Path, pattern:bytes, database=True, multithreaded=True):
         # dont try to add anything to db when the constant is unknown
         if name == "unknown":
             return position
-        
+
         conn = sqlite3.connect(SQLITE_PATH)
         cursor = conn.cursor()
         table_name = "_".join((name,str(base),format))
