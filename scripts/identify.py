@@ -60,13 +60,15 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         if table_exists:
             blob = md5(num[:100].encode()).digest()
             cursor.execute(f"SELECT name FROM {IDENTIFY_TABLE_NAME} WHERE hash = ?", (blob,))
-            if name:=cursor.fetchone():
+            name = cursor.fetchone()
+            if name:
                 name = str(name[0])
             else:
                 name = "unknown"
         else:
             print("WARN: identify table not created yet, using fallback")
             name = CONST_TABLE.get(num[:7],"unknown")
+        conn.close()
     else:
         print("WARN: identify table not created yet, using fallback")
         name = CONST_TABLE.get(num[:7],"unknown")
@@ -84,8 +86,8 @@ def check_valid(file_path:Path) -> bool:
     """ check wether a given file is a usable number file """
     if file_path.suffix not in (".txt", ".ycd"):
         return False
-
-    chunk = file_path.open("rb").read(1000)
+    with file_path.open("rb") as f:
+        chunk = f.read(1000)
 
     if file_path.suffix == ".ycd":
         header = all(p in chunk for p in (b"#Compressed Digit File", b"Base", b"FirstDigits", b"EndHeader"))
