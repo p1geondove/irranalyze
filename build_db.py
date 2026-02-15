@@ -247,7 +247,7 @@ def build_const(amount_digits:int, max_substring_len:int, file:str|None):
             speed_pattern = patterns_done / time_elapsed
             speed_pattern_f = format_size(speed_pattern, "/s")
             eta = format_time(patterns_total / speed_pattern - time_elapsed)
-            print(" "*100+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{files_done}/{files_total}", end=" "*10+"\r")
+            print(" "*120+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{files_done}/{files_total}", end="\r")
 
         files_done += 1
 
