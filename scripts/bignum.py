@@ -116,7 +116,7 @@ class BigNum:
         if self._file is None:
             self._file = self.path.open("r+b")
 
-        self._file.seek(self.radix_pos)
+        self._file.seek(self.radix_pos+1)
         self._first_digits = self._file.read(FIRST_DIGITS_AMOUNT)
 
         return self._first_digits
