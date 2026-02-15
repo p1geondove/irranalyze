@@ -1,4 +1,4 @@
-from string import ascii_lowercase
+from string import ascii_lowercase, ascii_letters
 from pathlib import Path
 
 import mpmath
@@ -41,6 +41,10 @@ def num_to_txt(num:str) -> str:
         raise ValueError("input must be numeric")
     pairs = (int(a+b) for a,b in zip(num[::2], num[1::2]))
     return "".join(chr(p%26+97) for p in pairs)
+
+def alnum_to_num(txt:str) -> str:
+    t = {c:f"{i:02d}" for i,c in enumerate(ascii_letters)}
+    return "".join(t[c] if c.isalpha() else str(c) for c in txt)
 
 def ycd_to_str(file_path:Path, amount_digits:int=1000) -> str:
     """
