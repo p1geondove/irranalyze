@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Y-Cruncher Search</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <input type="text" id="searchBox" placeholder="query">
+
+    <select id="constantSelect">
+      {% for constant in constants %}
+      <option value="{{ constant.name }}|{{ constant.base }}|{{ constant.format }}|{{ constant.size }}">
+        {{ constant.display }}
+      </option>
+      {% endfor %}
+    </select>
+
+    <div id="result">
+      query:<div id="querystring"></div>
+      position:<div id="position"></div>
+      arround:<div id="arround"></div>
+    </div>
+  </div>
+
+  <script>
+    const searchBox = document.getElementById('searchBox');
+    const constantSelect = document.getElementById('constantSelect');
+    const queryDiv = document.getElementById('querystring');
+    const positionDiv = document.getElementById('position');
+    const arroundDiv = document.getElementById('arround');
+
+    function performSearch() {
+      const query = searchBox.value;
+      const selected = constantSelect.value.split('|');
+      const name = selected[0];
+      const base = selected[1];
+      const format = selected[2];
+      const size = selected[3]
+
+      fetch(`/search?query=${encodeURIComponent(query)}&name=${encodeURIComponent(name)}&base=${encodeURIComponent(base)}&format=${encodeURIComponent(format)}&size=${encodeURIComponent(size)}`)
+        .then(response => response.json())
+        .then(data => {
+          queryDiv.textContent = data.query;
+          positionDiv.textContent = data.result;
+          arroundDiv.textContent = data.arround;
+        });
+    }
+
+    searchBox.addEventListener('input', performSearch);
+    constantSelect.addEventListener('change', performSearch);
+  </script>
+</body>
+</html>
