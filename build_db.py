@@ -2,7 +2,7 @@ import sqlite3
 import argparse
 
 from itertools import chain
-from threading import Thread, Lock
+from threading import Thread
 from queue import Queue
 from time import perf_counter, sleep
 
@@ -21,8 +21,8 @@ def build_identifier():
     cursor = conn.cursor()
     cursor.execute(f"CREATE TABLE IF NOT EXISTS {IDENTIFY_TABLE_NAME} (hash BLOB PRIMARY KEY, name TEXT)")
 
-
-    mpmath.mp.dps = 200 # only 100 digits are used but for big expressions evaluation can yield high error so doubling precision should be good enough
+    print("setting up identifier generation")
+    mpmath.mp.dps = 110 # only 100 digits are used but for big expressions evaluation can yield high error so doubling precision should be good enough
     primes = [mpmath.mpf(p) for p in sympy.primerange(1e6)]
     e = mpmath.e
     pi = mpmath.pi
@@ -208,52 +208,123 @@ def get_patterns(chunk:str|bytes, max_length:int=10, offset:int=0):
             patterns.append(part)
     return zip(patterns, positions)
 
-def build_const(amount_digits:int, max_substring_len:int, file:str|None):
-    nums = []
-    if file:
-        _file = Path(file)
-        if check_valid(_file):
-            nums = [BigNum(_file)]
-    else:
-        nums = set(get_all())
-
-    if not nums:
-        print("no files found for precompute, exiting")
-        return
-
+def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     time_start = perf_counter()
     patterns_done = 0
-    patterns_total = amount_digits * max_substring_len * len(nums)
-    files_done = 0
-    files_total = len(nums)
+    patterns_total = amount_digits * max_substring_len
 
     conn = sqlite3.connect(SQLITE_PATH)
     cursor = conn.cursor()
 
-    for num in nums:
-        print(f"creating table {num.table_name}"+" "*50)
+    print(f"creating table {num.table_name}"+" "*50)
+    cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
+
+    for startpos in range(0, amount_digits, NUMS_PER_INSERT):
+        chunk = num[startpos : startpos + NUMS_PER_INSERT]
+        patterns = get_patterns(chunk, max_substring_len, startpos+1) # this always yields bytes
+        cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
+        conn.commit()
+        patterns_done += NUMS_PER_INSERT * max_substring_len
+
+        # progress printing
+        time_elapsed = perf_counter() - time_start
+        time_elapsed_f = format_time(time_elapsed)
+        speed_pattern = patterns_done / time_elapsed
+        speed_pattern_f = format_size(speed_pattern, "/s")
+        eta = format_time(patterns_total / speed_pattern - time_elapsed)
+        print(" "*120+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}", end="\r")
+
+    total_time = perf_counter()-time_start
+    print(f"done building search string table {num.table_name} in {format_time(total_time)}")
+
+class SharedMem:
+    nums_queue:Queue[BigNum] = Queue()
+    amount_digits:int
+    max_substring_len:int
+    files_total:int
+    files_done:int = 0
+    patterns_total:int
+    patterns_done:int = 0
+    time_start:float
+    finished:bool = False
+    tmp_tables:Queue[Path] = Queue()
+
+def progress_mt(mem:SharedMem):
+    while not mem.finished:
+        sleep(0.3)
+        try:
+            time_elapsed = perf_counter() - mem.time_start
+            time_elapsed_f = format_time(time_elapsed)
+            speed_pattern = mem.patterns_done / time_elapsed
+            speed_pattern_f = format_size(speed_pattern, "/s")
+            eta = format_time(mem.patterns_total / speed_pattern - time_elapsed)
+            print(" "*120+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}", end="\r")
+        except:
+            ...
+
+def build_mt(mem:SharedMem):
+    while not mem.nums_queue.empty():
+        num = mem.nums_queue.get()
+        db_path = Path(num.table_name+".sqlite.tmp")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
         cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
-        for startpos in range(0, amount_digits, NUMS_PER_INSERT):
+        for startpos in range(0, mem.amount_digits, NUMS_PER_INSERT):
             chunk = num[startpos : startpos + NUMS_PER_INSERT]
-            patterns = get_patterns(chunk, max_substring_len, startpos+1) # this always yields bytes
+            patterns = get_patterns(chunk, mem.max_substring_len, startpos+1) # this always yields bytes
             cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
             conn.commit()
-            patterns_done += NUMS_PER_INSERT * max_substring_len
+            mem.patterns_done += NUMS_PER_INSERT * mem.max_substring_len
 
-            # progress printing
-            time_elapsed = perf_counter() - time_start
-            time_elapsed_f = format_time(time_elapsed)
-            speed_pattern = patterns_done / time_elapsed
-            speed_pattern_f = format_size(speed_pattern, "/s")
-            eta = format_time(patterns_total / speed_pattern - time_elapsed)
-            print(" "*120+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}\t files:{files_done}/{files_total}", end="\r")
+        mem.files_done += 1
+        mem.tmp_tables.put(db_path)
 
-        files_done += 1
+def build_many(amount_digits:int, max_substring_len:int, nums:list[BigNum]):
+    mem = SharedMem()
+    mem.amount_digits = amount_digits
+    mem.max_substring_len = max_substring_len
+    mem.time_start = perf_counter()
+    mem.files_total = len(nums)
+    mem.patterns_total = amount_digits * max_substring_len * len(nums)
 
-    print("done building search string table(s)")
+    for n in nums:
+        mem.nums_queue.put(n)
 
-if __name__ == "__main__":
+    progress_thread = Thread(target=progress_mt, args=(mem,))
+    progress_thread.start()
+
+    threads = []
+    amt_processes = min(MAX_PROCESSES, len(nums))
+    for id in range(amt_processes):
+        t = Thread(target=build_mt, args=(mem,))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    mem.finished = True
+    progress_thread.join()
+
+    print("\nDone creating tables, now merging them")
+    main_conn = sqlite3.connect(SQLITE_PATH)
+    main_cursor = main_conn.cursor()
+    while not mem.tmp_tables.empty():
+        tmp_db_path = mem.tmp_tables.get() # type pathlib.Path
+        main_cursor.execute(f"""ATTACH DATABASE "{str(tmp_db_path)}" AS tmp_db""")
+        main_cursor.execute("SELECT name FROM tmp_db.sqlite_master WHERE type='table'")
+        table_name = main_cursor.fetchone()[0]
+        main_cursor.execute(f"""
+CREATE TABLE IF NOT EXISTS "{table_name}" AS SELECT * FROM tmp_db."{table_name}"
+""")
+        main_cursor.execute(f"DETACH DATABASE tmp_db")
+        tmp_db_path.unlink()
+    main_conn.commit()
+    main_conn.close()
+    print("Done!")
+
+def main():
     parser = argparse.ArgumentParser(
         prog="build_db.py",
         description="Builds db with constants identify table as well as a few search values",
@@ -285,4 +356,12 @@ if __name__ == "__main__":
         build_identifier()
 
     if args.nums:
-        build_const(int(args.digits), int(args.substring), args.file)
+        if args.file:
+            p = Path(args.file)
+            if not check_valid(p): return
+            build_one(int(args.digits), int(args.substring), BigNum(p))
+        else:
+            build_many(int(args.digits), int(args.substring), list(set(get_all())))
+
+if __name__ == "__main__":
+    main()
