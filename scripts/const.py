@@ -7,6 +7,8 @@ settings = json.load(SETTINGS_PATH.open())
 NUM_DIR = Path(settings["NUM_DIR"])
 SQLITE_PATH = Path(settings["SQLITE_PATH"])
 NUMS_PER_INSERT = int(settings["NUMS_PER_INSERT"])
+MAX_PROCESSES = int(settings["MAX_PROCESSES"])
+
 CHUNK_SIZE = 8*2**20
 FIRST_DIGITS_AMOUNT = 1_000_000
 PAGE_SIZE = os.sysconf('SC_PAGE_SIZE')
