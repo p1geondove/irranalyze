@@ -56,9 +56,9 @@ def _serach_mp(file:Path, pattern:bytes, sector:tuple[int,int], position_val):
     if position < position_val.value or position_val.value == -1:
         position_val.value = position
 
-def search_mp(file:Path, pattern:bytes, num_workers:int=0):
+def search_mp(file:Path, pattern:bytes, num_workers:int=MAX_PROCESSES):
     """ multiprocessing approach, fast but expensive and potentially lots of overhead """
-    num_workers = num_workers or os.cpu_count() or 1
+    num_workers = max(1,  num_workers or os.cpu_count() or 1)
     _,_,_,_,radix_pos = identify(file)
     num_size = file.stat().st_size - radix_pos
     sector_size = math.ceil(num_size/num_workers) // PAGE_SIZE * PAGE_SIZE
