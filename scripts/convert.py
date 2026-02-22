@@ -1,31 +1,64 @@
 from string import ascii_lowercase, ascii_letters
 from pathlib import Path
+from itertools import product
 
 import mpmath
 import gmpy2
 
-def txt_to_num(txt:str) -> str:
+def txt_to_num(txt:str|bytes) -> str|bytes:
     """
     converts alphabetic string to numeric string
-    
+
     :param txt: alphabetic string
     :type txt: str
     :return: numeric string
     :rtype: str
 
     can be treated as the inverse to num_to_txt()
-
+    presevers datatype
     txt_to_num("number") -> "132012010417"
     """
+    isbytes = False
+    if isinstance(txt,bytes):
+        txt = txt.decode()
+        isbytes = True
     if not txt.isalpha():
         raise ValueError("input must be alphabetic")
     txt = txt.lower()
-    return "".join(f"{c-97:02d}" for c in map(ord,txt))
+    if isbytes:
+        return "".join(f"{c-97:02d}" for c in map(ord,txt)).encode()
+    else:
+        return "".join(f"{c-97:02d}" for c in map(ord,txt))
 
-def num_to_txt(num:str) -> str:
+def txt_to_num_all(txt:str|bytes):
+    """
+    converts alphabetic string to numeric string
+
+    :param txt: alphabetic string
+    :type txt: str
+    :return: numeric string
+    :rtype: generator[str|bytes]
+
+    this returns all possible conversions
+    this is also a generator since there are 3**(len(txt)) possible representations
+    list(txt_to_num("ab")) -> ['0001', '0027', '0053', '2601', '2627', '2653', '5201', '5227', '5253']
+    """
+    isbytes = False
+    if isinstance(txt,bytes):
+        txt = txt.decode()
+        isbytes = True
+    chars = product(*[[ord(c)-97+26*n for n in range(3)] for c in txt])
+    if isbytes:
+        for nums in chars:
+            yield "".join(f"{n:02d}" for n in nums).encode()
+    else:
+        for nums in chars:
+            yield "".join(f"{n:02d}" for n in nums)
+
+def num_to_txt(num:int|str, asbytes:bool=False) -> str|bytes:
     """
     converts numeric string to alphabetic string
-    
+
     :param num: numeric string
     :type num: str
     :return: lowercase alphabetic string
@@ -37,14 +70,28 @@ def num_to_txt(num:str) -> str:
 
     txt_to_num("132012010417") -> "number"
     """
+    if isinstance(num,int):
+        num = str(num)
     if not num.isnumeric():
         raise ValueError("input must be numeric")
+    if len(num)%2:
+        print(f"WARN: input of num_to_txt should have even length")
     pairs = (int(a+b) for a,b in zip(num[::2], num[1::2]))
-    return "".join(chr(p%26+97) for p in pairs)
+    if asbytes:
+        return "".join(chr(p%26+97) for p in pairs).encode()
+    else:
+        return "".join(chr(p%26+97) for p in pairs)
 
-def alnum_to_num(txt:str) -> str:
+def alnum_to_num(txt:str|bytes) -> str|bytes:
+    isbytes = False
+    if isinstance(txt,bytes):
+        txt = txt.decode()
+        isbytes = True
     t = {c:f"{i:02d}" for i,c in enumerate(ascii_letters)}
-    return "".join(t[c] if c.isalpha() else str(c) for c in txt)
+    if isbytes:
+        return "".join(t[c] if c.isalpha() else str(c) for c in txt).encode()
+    else:
+        return "".join(t[c] if c.isalpha() else str(c) for c in txt)
 
 def ycd_to_str(file_path:Path, amount_digits:int=1000) -> str:
     """
