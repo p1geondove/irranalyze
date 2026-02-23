@@ -47,15 +47,16 @@ def txt_to_num_all(txt:str|bytes):
     if isinstance(txt,bytes):
         txt = txt.decode()
         isbytes = True
-    chars = product(*[[ord(c)-97+26*n for n in range(3)] for c in txt])
+    table = {c:[f"{(ord(c)-97)+n*26:02d}" for n in range(4) if (ord(c)-97)+n*26<=99] for c in ascii_lowercase}
+    chars = product(*[table[c] for c in txt])
     if isbytes:
         for nums in chars:
-            yield "".join(f"{n:02d}" for n in nums).encode()
+            yield "".join(nums).encode()
     else:
         for nums in chars:
-            yield "".join(f"{n:02d}" for n in nums)
+            yield "".join(nums)
 
-def num_to_txt(num:int|str, asbytes:bool=False) -> str|bytes:
+def num_to_txt(num:int|str|bytes, asbytes:bool=False) -> str|bytes:
     """
     converts numeric string to alphabetic string
 
@@ -72,6 +73,8 @@ def num_to_txt(num:int|str, asbytes:bool=False) -> str|bytes:
     """
     if isinstance(num,int):
         num = str(num)
+    elif isinstance(num,bytes):
+        num = num.decode()
     if not num.isnumeric():
         raise ValueError("input must be numeric")
     if len(num)%2:

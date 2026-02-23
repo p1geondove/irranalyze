@@ -35,29 +35,40 @@ class BigNum:
         """ returns amount of bytes after radix"""
         return self.size
 
-    def __getitem__(self, i) -> str|bytes|int|None:
+    def __getitem__(self, i) -> str|bytes|int|list|None:
         """ just as the search function this is 1-indexed, ergo [0] is always '.', but slices like [:10] dont include the dot. Can also be used as a search proxy if input is str|bytes """
-        if isinstance(i, int): # key == int
-            if i < FIRST_DIGITS_AMOUNT:
-                return self.first_digits[i]
+        if isinstance(i, int):
+            #if i < FIRST_DIGITS_AMOUNT:
+            #    return self.first_digits[i]
             i += self.radix_pos+1
-            return self.mmap[i]
+            return chr(self.mmap[i])
 
-        if isinstance(i, slice): # key == slice
+        elif isinstance(i, slice): # key == slice
             if i.stop and i.stop < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
             i = slice(i.start+self.radix_pos+1, i.stop+self.radix_pos+1, i.step)
             return self.mmap[i]
 
-        if isinstance(i, str): # key == str
+        elif isinstance(i, str): # key == str
             if i.isalpha():
                 i = txt_to_num(i)
             if i.isalnum():
                 i = alnum_to_num(i)
             return search(self.path, i.encode())
 
-        if isinstance(i, bytes): # key == bytes
+        elif isinstance(i, bytes): # key == bytes
             return search(self.path, i)
+
+        elif isinstance(i, list|tuple):
+            unifrorm = True
+            t = type(i[0])
+            for e in i[1:]:
+                if not isinstance(e,t):
+                    unifrorm = False
+                    break
+            if not unifrorm:
+                return [self[e] for e in i]
+            
 
     def __iter__(self):
         """ yields digits after radix point """
@@ -117,7 +128,7 @@ class BigNum:
             self._file = self.path.open("r+b")
 
         self._file.seek(self.radix_pos+1)
-        self._first_digits = self._file.read(FIRST_DIGITS_AMOUNT)
+        self._first_digits = self._file.read(FIRST_DIGITS_AMOUNT).decode()
 
         return self._first_digits
 
