@@ -1,7 +1,8 @@
 import os
-from pathlib import Path
 import math
 import sqlite3
+from typing import Iterable
+from pathlib import Path
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 from multiprocessing import Process, Value, Array
 
@@ -218,7 +219,7 @@ def search_db(file:Path, pattern:bytes) -> int:
         return result[0]
     return -1
 
-def multi_search_db(file:Path, patterns:list[bytes]) -> dict[bytes,int]:
+def multi_search_db(file:Path, patterns:list[bytes]|tuple[bytes]) -> dict[bytes,int]:
     conn = sqlite3.connect(SQLITE_PATH)
     cursor = conn.cursor()
     table_name = get_table_name(file)
@@ -270,7 +271,7 @@ def _search(file:Path, pattern:bytes, database:bool=True, multithreaded:bool=Tru
     # return position no matter if found (n>=0) or not (-1)
     return position
 
-def _search_multi(file:Path, patterns:list[bytes], database:bool=True, multithreaded:bool=True):
+def _search_multi(file:Path, patterns:list[bytes]|tuple[bytes], database:bool=True, multithreaded:bool=True):
     positions = {p:-1 for p in patterns}
 
     # db search
@@ -316,8 +317,8 @@ def _search_multi(file:Path, patterns:list[bytes], database:bool=True, multithre
 
     return positions
 
-def search(file, pattern:bytes|list[bytes], database:bool=True, multithreaded:bool=True):
-    if isinstance(pattern,list):
+def search(file, pattern:bytes|list[bytes]|tuple[bytes], database:bool=True, multithreaded:bool=True):
+    if isinstance(pattern,list|tuple):
         return _search_multi(file,pattern,database,multithreaded)
     return _search(file,pattern,database,multithreaded)
 

@@ -1,9 +1,8 @@
-import sys
-
 from pathlib import Path
 from functools import total_ordering
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 from math import log
+from typing import Iterable, Generator
 
 from .search import search
 from .identify import identify, check_valid
@@ -35,28 +34,30 @@ class BigNum:
         """ returns amount of bytes after radix"""
         return self.size
 
-    def __getitem__(self, i) -> str|bytes|int|list|None:
+    def __getitem__(self, i):
         """ just as the search function this is 1-indexed, ergo [0] is always '.', but slices like [:10] dont include the dot. Can also be used as a search proxy if input is str|bytes """
         if isinstance(i, int):
-            #if i < FIRST_DIGITS_AMOUNT:
-            #    return self.first_digits[i]
+            if i < FIRST_DIGITS_AMOUNT:
+                return self.first_digits[i]
             i += self.radix_pos+1
             return chr(self.mmap[i])
 
-        elif isinstance(i, slice): # key == slice
+        elif isinstance(i, slice):
             if i.stop and i.stop < FIRST_DIGITS_AMOUNT:
                 return self.first_digits[i]
             i = slice(i.start+self.radix_pos+1, i.stop+self.radix_pos+1, i.step)
             return self.mmap[i]
 
-        elif isinstance(i, str): # key == str
+        elif isinstance(i, str):
             if i.isalpha():
                 i = txt_to_num(i)
             if i.isalnum():
                 i = alnum_to_num(i)
-            return search(self.path, i.encode())
+            if isinstance(i,str):
+                i = i.encode()
+            return search(self.path, i)
 
-        elif isinstance(i, bytes): # key == bytes
+        elif isinstance(i, bytes):
             return search(self.path, i)
 
         elif isinstance(i, list|tuple):
@@ -68,7 +69,25 @@ class BigNum:
                     break
             if not unifrorm:
                 return [self[e] for e in i]
-            
+            elif t == bytes:
+                return search(self.path, i)
+            elif t == str:
+                return search(self.path, [e.encode() for e in i])
+            print("cant multi search that...")
+            return
+
+        elif isinstance(i, Iterable):
+            funcs = {
+                bytes:lambda x:x,
+                str:lambda x:x.encode(),
+                int|float:lambda x:str(x).encode()
+            }
+
+            elements = []
+            for element in i:
+                elements.append(funcs[type(element)](element))
+
+            return search(self.path, elements)
 
     def __iter__(self):
         """ yields digits after radix point """
@@ -81,6 +100,7 @@ class BigNum:
         """ should technically always return true, but its for the limited file only :P """
         if isinstance(pattern, str):
             pattern = pattern.encode()
+        # again here pyright doesnt know that the output can only be int, maybe explicitly import and use search._search here
         return search(self.path, pattern) >= 0
 
     def __hash__(self) -> int:
