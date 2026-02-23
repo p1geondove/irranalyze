@@ -69,6 +69,7 @@ b'number'
  - `cd irranalyze`
  - `uv venv`
  - `uv sync`
+ - open setting.json and edit `NUM_DIR` to point to your number directory
  - `uv run build_db.py -i` (run build_db.py -h to get a overview of arguments)
  - `uv run main.py`
 
@@ -84,3 +85,4 @@ b'number'
   - interactive search
 
 - add more comments, make more readable
+- add open ended setting: report not found to db by default
