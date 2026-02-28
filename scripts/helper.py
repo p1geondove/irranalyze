@@ -24,7 +24,7 @@ def format_time(time: float):
         time = abs(time)
 
     mag = min(3,int(abs(log10(time)-3)/3))
-    return f"{'-' if neg else ''}{time*10**(3*mag):.1f}{' mun'[mag]}s"
+    return f"{'-' if neg else ''}{time*10**(3*mag):.2f}{' mun'[mag]}s"
 
 def timer(func):
     def wrapper(*args, **kwargs):
