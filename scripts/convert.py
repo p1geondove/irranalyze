@@ -1,3 +1,5 @@
+# converst.py - housing various conversion methods
+
 from string import ascii_lowercase, ascii_letters
 from pathlib import Path
 from itertools import product
