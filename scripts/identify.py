@@ -1,14 +1,17 @@
+# identify.py - used for identifying number files
+
 import sqlite3
 from pathlib import Path
 from hashlib import md5
 
-from .const import CONST_TABLE, SQLITE_PATH, IDENTIFY_TABLE_NAME
+from .const import CONST_TABLE, IDENTIFY_TABLE_NAME
+from .var import Paths
 from .convert import ycd_to_str, hex_to_dec
 
 def identify(file_path:Path) -> tuple[str,int,str,int,int]:
     """
     unified identify method for number files, raises ValueError if illegal file
-    
+
     :param file_path: path to file
     :type file_path: Path
     :rtype: tuple[str, int, str, int, int]
@@ -20,7 +23,7 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
     5. radix_pos (1,196...)
     """
     with file_path.open("rb") as f:
-        chunk = f.read(1000)
+        chunk = f.read(400)
 
     format = "ycd" if b"#Compressed Digit File" in chunk else "txt"
 
@@ -39,12 +42,12 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         else:
             radix_pos += 13 # 13 = EndHeader\r\n\r\n
         base = int(chunk.split(b"Base:\t")[1].split(b"\r\n\r\n")[0].decode())
-        num = ycd_to_str(file_path,200)
+        num = ycd_to_str(file_path,110)
         first_digits = chunk.split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0]
         int_part, _ = first_digits.split(b".")
 
     # y-cruncher only outputs hex and dec
-    if not base in (10,16):
+    if base!=10 and base!=16:
         raise ValueError("illegal base")
 
     # always convert to decimal, since identify table only hosts hashes to decimal expansion
@@ -52,8 +55,8 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         num = hex_to_dec(num)
 
     # check if db exists
-    if SQLITE_PATH.exists():
-        conn = sqlite3.connect(SQLITE_PATH)
+    if Paths.sqlite_path.exists():
+        conn = sqlite3.connect(Paths.sqlite_path)
         cursor = conn.cursor()
         table_exists = bool(cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (IDENTIFY_TABLE_NAME, )).fetchone())
         # check if identify table exists 
@@ -87,7 +90,7 @@ def check_valid(file_path:Path) -> bool:
     if file_path.suffix not in (".txt", ".ycd"):
         return False
     with file_path.open("rb") as f:
-        chunk = f.read(1000)
+        chunk = f.read(500)
 
     if file_path.suffix == ".ycd":
         header = all(p in chunk for p in (b"#Compressed Digit File", b"Base", b"FirstDigits", b"EndHeader"))
