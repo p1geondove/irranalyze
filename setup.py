@@ -9,15 +9,15 @@ from scripts.helper import format_size
 
 def main():
     #  === Setting num_dir ===
-    print("\n--- num_dir ---\nThis is the path to all the big number files you have. This doesnt have to be a flat directory, recursive search is enabled by default")
+    print("--- num_dir ---\nThis is the path to all the big number files you have. This doesnt have to be a flat directory, recursive search is enabled by default")
     while True:
-        prompt = input(f"path to your numbers [{Paths.num_dir}]: ")
+        prompt = input(f"path to your numbers ({Paths.num_dir}): ")
         if prompt == "":
             val = Paths.num_dir
             break
         val = Path(prompt)
         if not val.exists():
-            prompt = input(f"{val} does not exist, create it? [y/N]: ").lower()
+            prompt = input(f"{val} does not exist, create it? (y/N): ").lower()
             if prompt == "y":
                 val.mkdir(parents=True)
                 break
@@ -30,13 +30,13 @@ def main():
     print("\n--- sqlite_path ---\nThis is the path to the database file that will be created")
     del val
     while True:
-        prompt = input(f"path to your sqlite database [{Paths.sqlite_path}]: ")
+        prompt = input(f"path to your sqlite database ({Paths.sqlite_path}): ")
         if prompt == "":
             val = Paths.sqlite_path
             break
         val = Path(prompt)
         if not val.parent.exists():
-            prompt = input(f"{val.parent} does not exist, create it? [y/N]: ").lower()
+            prompt = input(f"{val.parent} does not exist, create it? (y/N): ").lower()
             if prompt == "y":
                 val.parent.mkdir(parents=True)
                 break
@@ -49,37 +49,51 @@ def main():
     print("\n--- report_not_found ---\nIf you have fixed number files, reporting -1/not found to db doesnt cause searching the same thing twice uneessecarily. When in future you add bigger number files of the same type you should leave this off")
     del val
     while True:
-        prompt = input(f"report -1 to db if search string not found? [{Switches.report_not_found}]: ")
+        prompt = input(f"report -1 to db if search string not found? (Y/n): ").lower()
         if prompt == "":
             val = Switches.report_not_found
             break
-        try:
-            val = bool(prompt)
+        elif prompt in {"true","t","y"}:
+            val = True
             break
-        except KeyboardInterrupt|EOFError:
-            raise
-        except:
-            print(f"cant convert {prompt} to bool")
-            continue
+        elif prompt in {"false","f","n"}:
+            val = False
+            break
+        else:
+            try:
+                val = bool(prompt)
+                break
+            except KeyboardInterrupt|EOFError:
+                raise
+            except:
+                print(f"cant convert {prompt} to bool")
+                continue
     Switches.report_not_found = val
     print(f"updated setting 'report_not_found' to {val}")
 
     # === Setting one_indexed ===
-    print("\n--- one_indexed ---\nthe first digit after radix point is by default 1 to align with angio.net/pi/piquery, tho for programming the first element is usually 0")
+    print("\n--- one_indexed ---\nThe first digit after radix point is by default 1 to align with angio.net/pi/piquery, tho for programming the first element is usually 0")
     del val
     while True:
-        prompt = input(f"First digits are index 1? [{Switches.one_indexed}]: ")
+        prompt = input(f"First digits are index 1? (Y/n): ")
         if prompt == "":
             val = Switches.one_indexed
             break
-        try:
-            val = bool(prompt)
+        elif prompt in {"true","t","y"}:
+            val = True
             break
-        except KeyboardInterrupt|EOFError:
-            raise
-        except:
-            print(f"cant convert {prompt} to bool")
-            continue
+        elif prompt in {"false","f","n"}:
+            val = False
+            break
+        else:
+            try:
+                val = bool(prompt)
+                break
+            except KeyboardInterrupt|EOFError:
+                raise
+            except:
+                print(f"cant convert {prompt} to bool")
+                continue
     Switches.one_indexed = val
     print(f"updated setting 'one_indexed' to {val}")
 
@@ -87,7 +101,7 @@ def main():
     print("\n--- max_processes ---\nThe amount of processes/threads to spawn for search/build_db. More is usually better, usually keep this number to the number of cores you have")
     del val
     while True:
-        prompt = input(f"Amount of processes (usually amount of cpu cores) [{os.cpu_count() or 1}]: ")
+        prompt = input(f"Amount of processes (usually amount of cpu cores) ({os.cpu_count() or 1}): ")
         if prompt == "":
             val = os.cpu_count() or 1
             break
@@ -109,7 +123,7 @@ def main():
     print("\n--- pairs_per_insert ---\nThe amount of substring/position pairs to add to database while (optional) precalculating number tables. Changing this can yield minor improvements however default is fine")
     del val
     while True:
-        prompt = input(f"Amount of inserts per query for build_db -n [{Sizes.pairs_per_insert}]: ")
+        prompt = input(f"Amount of inserts per query for build_db -n ({Sizes.pairs_per_insert}): ")
         if prompt == "":
             val = Sizes.pairs_per_insert
         else:
@@ -132,7 +146,7 @@ def main():
     print("\n--- chunk_size ---\nThe size of chunks to use for search. Powers of 2 are usually best")
     del val
     while True:
-        prompt = input(f"Chunksize for searching [{Sizes.chunk_size}]: ")
+        prompt = input(f"Chunksize for searching ({Sizes.chunk_size}): ")
         if prompt == "":
             val = Sizes.chunk_size
         else:
@@ -155,9 +169,9 @@ def main():
     print("\n--- first_digit_amount ---\nThe amount of digits/chars to save in a variable. Used for quicksearch. Low values start multiprocessing search too much, high values will slow down quicksearch, when quicksearch should be low latency")
     del val
     while True:
-        prompt = input(f"Amount of digits to cache [{Sizes.first_digit_amount}]: ")
+        prompt = input(f"Amount of digits to cache ({Sizes.first_digits_amount}): ")
         if prompt == "":
-            val = Sizes.first_digit_amount
+            val = Sizes.first_digits_amount
         else:
             try:
                 prompt = eval(prompt)
@@ -171,14 +185,14 @@ def main():
             print("amount of digits has to be more than zero")
         else:
             break
-    Sizes.first_digit_amount = val
+    Sizes.first_digits_amount = val
     print(f"updated setting 'first_digit_amount' to {val}")
 
     # === Run build_db.py ===
     print("\nFinished setting up Variables!\n")
     build = False
     while True:
-        prompt = input(f"Runun build_db to build identifier table and precalculate search strings? (Y/n): ").lower()
+        prompt = input(f"Run build_db to build identifier table and precalculate search strings? (Y/n): ").lower()
         if prompt == "n":
             break
         elif prompt in {"","y"}:
@@ -208,10 +222,10 @@ def main():
             elif prompt in {"","y"}:
                 # check the number files
                 while True:
-                    prompt = input(f"Found {len(nums)} different number file(s), print overview?: (Y/n): ")
-                    if prompt == "n":
+                    prompt = input(f"Found {len(nums)} different number file(s), print overview?: (y/N): ")
+                    if prompt == {"","n"}:
                         break
-                    elif prompt in {"","y"}:
+                    elif prompt == "y":
                         print(nums)
                         break
                     else:
@@ -267,4 +281,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt, EOFError:
-        print("\nHey please come back :'(\n")
+        print("\nHey come back :'(")
