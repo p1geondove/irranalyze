@@ -1,6 +1,10 @@
 {
-  "SQLITE_PATH":"./irranalyze.sqlite",
-  "NUM_DIR":"/home/p1geon/bignum/",
-  "NUMS_PER_INSERT":100000,
-  "MAX_PROCESSES":24
+  "num_dir": "/path/to/numbers/",
+  "sqlite_path": "irranalyze.sqlite",
+  "report_not_found": true,
+  "one_indexed": true,
+  "max_processes": -1,
+  "pairs_per_insert": 100000,
+  "chunk_size": 1048576,
+  "first_digits_amount": 100000
 }
