@@ -1,3 +1,5 @@
+# bignum.py - wrapper for number files
+
 from pathlib import Path
 from functools import total_ordering
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
@@ -6,9 +8,9 @@ from typing import Iterable, Generator
 
 from .search import search
 from .identify import identify, check_valid
-from .convert import base_convert, hex_to_dec, ycd_to_str, txt_to_num, alnum_to_num
+from .convert import base_convert, hex_to_dec, ycd_to_str
 from .helper import format_size
-from .const import NUM_DIR, FIRST_DIGITS_AMOUNT
+from .var import Sizes, Paths, Switches
 
 @total_ordering
 class BigNum:
@@ -37,71 +39,46 @@ class BigNum:
     def __getitem__(self, i):
         """ just as the search function this is 1-indexed, ergo [0] is always '.', but slices like [:10] dont include the dot. Can also be used as a search proxy if input is str|bytes """
         if isinstance(i, int):
-            if i < FIRST_DIGITS_AMOUNT:
-                return self.first_digits[i]
-            i += self.radix_pos+1
-            return chr(self.mmap[i])
+            if i < Sizes.first_digits_amount:
+                return bytes((self.first_digits[i],))
+            i += self.radix_pos+1-Switches.one_indexed
+            return bytes((self.mmap[i],))
 
-        elif isinstance(i, slice):
-            if i.stop and i.stop < FIRST_DIGITS_AMOUNT:
+        if isinstance(i, slice):
+            if i.stop and -1 < i.stop < Sizes.first_digits_amount:
                 return self.first_digits[i]
-            i = slice(i.start+self.radix_pos+1, i.stop+self.radix_pos+1, i.step)
-            return self.mmap[i]
+            base = self.radix_pos + 1 - Switches.one_indexed
+            virtual_len = len(self.mmap) - base
+            start, stop, step = i.indices(virtual_len)
+            return self.mmap[base+start:base+stop:step]
 
-        elif isinstance(i, str):
-            if i.isalpha():
-                i = txt_to_num(i)
-            if i.isalnum():
-                i = alnum_to_num(i)
-            if isinstance(i,str):
-                i = i.encode()
+        if isinstance(i, str):
+            return search(self.path, i.encode())
+
+        if isinstance(i, bytes):
             return search(self.path, i)
 
-        elif isinstance(i, bytes):
-            return search(self.path, i)
-
-        elif isinstance(i, list|tuple):
-            unifrorm = True
-            t = type(i[0])
-            for e in i[1:]:
-                if not isinstance(e,t):
-                    unifrorm = False
-                    break
-            if not unifrorm:
-                return [self[e] for e in i]
-            elif t == bytes:
-                return search(self.path, i)
-            elif t == str:
-                return search(self.path, [e.encode() for e in i])
-            print("cant multi search that...")
-            return
-
-        elif isinstance(i, Iterable):
+        if isinstance(i, Iterable):
             funcs = {
-                bytes:lambda x:x,
                 str:lambda x:x.encode(),
-                int|float:lambda x:str(x).encode()
             }
+            elements = [funcs.get(type(e),lambda x:x)(e) for e in i]
+            if all(isinstance(e, bytes) for e in elements):
+                return search(self.path, elements)
+            return [self[e] for e in elements]
 
-            elements = []
-            for element in i:
-                elements.append(funcs[type(element)](element))
-
-            return search(self.path, elements)
-
-    def __iter__(self):
-        """ yields digits after radix point """
+    def __iter__(self) -> Generator[bytes]:
+        """ yields digits as bytes, radix is never included no matter the state of Switches.one_indexed"""
         i = iter(self.mmap)
         for _ in range(self.radix_pos+1):
             next(i)
-        yield from i
+        yield from i # no pyright, this is not a Generator[int], mmap always returns single bytes: github.com/python/cpython/issues/70546
 
     def __contains__(self, pattern:str|bytes) -> bool:
         """ should technically always return true, but its for the limited file only :P """
         if isinstance(pattern, str):
             pattern = pattern.encode()
-        # again here pyright doesnt know that the output can only be int, maybe explicitly import and use search._search here
-        return search(self.path, pattern) >= 0
+        return search(self.path, pattern) != -1
 
     def __hash__(self) -> int:
         return self._hash
@@ -139,17 +116,12 @@ class BigNum:
         self.close()
 
     @property
-    def first_digits(self) -> str|bytes:
+    def first_digits(self) -> bytes:
         """ small section of the number, usually 1mio digits after radix """
         if self._first_digits:
             return self._first_digits
-
-        if self._file is None:
-            self._file = self.path.open("r+b")
-
-        self._file.seek(self.radix_pos+1)
-        self._first_digits = self._file.read(FIRST_DIGITS_AMOUNT).decode()
-
+        base = self.radix_pos + 1 - Switches.one_indexed
+        self._first_digits = self.mmap[base:base+Sizes.first_digits_amount]
         return self._first_digits
 
     @property
@@ -162,10 +134,7 @@ class BigNum:
             self._file = self.path.open("r+b")
 
         self._mmap = mmap(self._file.fileno(), length=0, access=ACCESS_READ)
-
-        #if sys.platform == "linux":
         self._mmap.madvise(MADV_SEQUENTIAL)
-
         return self._mmap
 
     def close(self):
@@ -179,7 +148,7 @@ class BigNum:
 
     def to_base(self, base:int|str|list[str], digits:int=-1) -> str:
         """
-        convert number to a different base
+        convert number to a different base, this includes intpart and radix point
         :param base: base notation, see below
         :type base: int | str | list[str]
         :param digits: amount of digits to return
@@ -237,7 +206,7 @@ def get_all(
     base: int | None = None,
     format: str | None = None,
     size: int | None = None,
-    num_dir: str | Path = NUM_DIR,
+    num_dir: str | Path = Paths.num_dir,
     recursive = False
 ):
     """
@@ -270,7 +239,7 @@ def get_one(
     base: int | None = None,
     format: str | None = None,
     size: int | None = None,
-    num_dir: str | Path = NUM_DIR,
+    num_dir: str | Path = Paths.num_dir,
     recursive = False
 ):
     """
