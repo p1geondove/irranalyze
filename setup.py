@@ -222,8 +222,8 @@ def main():
             elif prompt in {"","y"}:
                 # check the number files
                 while True:
-                    prompt = input(f"Found {len(nums)} different number file(s), print overview?: (y/N): ")
-                    if prompt == {"","n"}:
+                    prompt = input(f"Found {len(nums)} different number file(s), print overview?: (y/N): ").lower()
+                    if prompt in {"","n"}:
                         break
                     elif prompt == "y":
                         print(nums)
@@ -280,5 +280,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except KeyboardInterrupt, EOFError:
+    except KeyboardInterrupt|EOFError:
         print("\nHey come back :'(")
