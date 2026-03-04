@@ -1,8 +1,6 @@
 # build_db.py - used to init the db with identifier table and precalculate some pattern:pos pairs
 
-import json
 import sqlite3
-import argparse
 from pathlib import Path
 from fractions import Fraction
 from typing import Any
@@ -12,15 +10,12 @@ from threading import Thread
 from queue import Queue
 from time import perf_counter, sleep
 
-from .bignum import BigNum, get_all
+from .bignum import BigNum
 from .helper import format_size, format_time
-from .identify import check_valid
 from .var import Sizes, Paths
-from .const import IDENTIFY_TABLE_NAME, SETTINGS_PATH
-from .helper import timer
+from .const import IDENTIFY_TABLE_NAME
 
-@timer
-def build_identifier():
+def build_identifier(verbose:bool=False):
     from hashlib import md5
     import mpmath
     from mpmath import e, pi, ln, sqrt, inf, root, nsum, fsum, nprod, findroot
@@ -32,7 +27,9 @@ def build_identifier():
     def is_valid(num): # returns False if a number is +/-infinity, integer or rational
         return -mpmath.inf<num<mpmath.inf and num%1>tol_int and -num%1>tol_int and Fraction(str(num)).denominator > tol_rat
 
-    print("setting up identifier generation")
+    if verbose:
+        print("setting up identifier generation")
+
     # only 100 digits are used but for big expressions evaluation can yield high error so increasing precision
     # if you wanna add constants maybe put this to 200 and look at the md5 hash of the generated db, then lower it until it changes, thats how i did it
     # 120 for not is the limit, altho funnily enough all my files still get identified with 105
@@ -45,7 +42,8 @@ def build_identifier():
     ln2 = ln(2)
     gamma = -mpmath.psi(1/3,1)
 
-    print("evaluating oneliners")
+    if verbose:
+        print("evaluating oneliners")
     constants:list[tuple[Any,str]] = [
         (pi, "pi"),
         (pi*2, "tau"),
@@ -108,7 +106,8 @@ def build_identifier():
     ]
 
     """ constants i couldnt find a nice oneliner for """
-    print("evaluating more complex constants")
+    if verbose:
+        print("evaluating more complex constants")
 
     # cahen's constant
     s = [mpmath.mpf(2)]
@@ -124,7 +123,8 @@ def build_identifier():
     name = "conway's constant"
     constants.append((num,name))
 
-    print("calculating hashes and inserting into db")
+    if verbose:
+        print("calculating hashes and inserting into db")
 
     hash_name_pairs:list[tuple[bytes,str]] = []
     hash_set:set[bytes] = set()
@@ -140,7 +140,8 @@ def build_identifier():
         ))
 
     """ functions """
-    print("iterating single argument over functions")
+    if verbose:
+        print("iterating single argument over functions")
     # inputs to functions 0->10 & 1/2->1/10 & some special ones
     inputs = [
         (x,str(x)) for x in range(11)
@@ -185,10 +186,12 @@ def build_identifier():
                 continue
             hash_set.add(blob)
             hash_name_pairs.append((blob,name))
-            print(f"{name}:{blob}", end=" "*20+"\r")
+            if verbose:
+                print(f"{name}:{blob}", end=" "*20+"\r")
 
     # two argument
-    print(f"\niterating multi argument fucntions")
+    if verbose:
+        print(f"\niterating multi argument fucntions")
     functions = [
         (root, "root"),
         (mpmath.beta, "beta"),
@@ -210,7 +213,8 @@ def build_identifier():
                     continue
                 hash_set.add(blob)
                 hash_name_pairs.append((blob,name))
-                print(f"{name}:{blob}", end=" "*20+"\r")
+                if verbose:
+                    print(f"{name}:{blob}", end=" "*20+"\r")
 
     # put all aggregated hash and name pairs into the database
     conn = sqlite3.connect(Paths.sqlite_path)
@@ -219,7 +223,9 @@ def build_identifier():
     cursor.executemany(f"""INSERT OR IGNORE INTO {IDENTIFY_TABLE_NAME} VALUES (?, ?)""", hash_name_pairs)
     conn.commit()
     conn.close()
-    print("\ndone building identifier table")
+
+    if verbose:
+        print("\ndone building identifier table")
 
 def get_patterns(chunk:str|bytes, max_length:int=10, offset:int=0):
     positions = chain.from_iterable((x+offset,)*max_length for x in range(len(chunk)-max_length))
@@ -352,44 +358,3 @@ CREATE TABLE IF NOT EXISTS "{table_name}" AS SELECT * FROM tmp_db."{table_name}"
     conn.close()
     print("Done!")
 
-def main():
-    parser = argparse.ArgumentParser(
-        prog="build_db.py",
-        description="Builds db with constants identify table as well as a few search values",
-    )
-
-    parser.add_argument("-yc", default=Paths.num_dir, help="directory path to y-cruncher numbers")
-    parser.add_argument("-db", default=Paths.sqlite_path, help="path to sqlite database")
-    parser.add_argument("-d", "--digits", default=1_000_000, help="first n digits/bytes")
-    parser.add_argument("-s", "--substring", default=6, help="maximum size of substring")
-    parser.add_argument("-f", "--file", default=None, help="only generate one table for this constant")
-    parser.add_argument("-i", "--identify", action="store_true", help="switch to enable building indentify table")
-    parser.add_argument("-n", "--nums", action="store_true", help="switch to enable search string baking")
-
-    args = parser.parse_args()
-
-    if args.yc != Paths.num_dir:
-        settings = json.load(SETTINGS_PATH.open())
-        settings["Paths.num_dir"] = args.yc
-        json.dump(settings, SETTINGS_PATH.open("w"))
-        print(f"updated setting Paths.num_dir to {args.yc}")
-
-    if args.db != Paths.sqlite_path:
-        settings = json.load(SETTINGS_PATH.open())
-        settings["Paths.sqlite_path"] = args.db
-        json.dump(settings, SETTINGS_PATH.open("w"))
-        print(f"updated setting Paths.sqlite_path to {args.db}")
-
-    if args.identify:
-        build_identifier()
-
-    if args.nums:
-        if args.file:
-            p = Path(args.file)
-            if not check_valid(p): return
-            build_one(int(args.digits), int(args.substring), BigNum(p))
-        else:
-            build_many(int(args.digits), int(args.substring), list(set(get_all())))
-
-if __name__ == "__main__":
-    main()
