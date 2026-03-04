@@ -4,7 +4,7 @@ from pathlib import Path
 from functools import total_ordering
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 from math import log
-from typing import Iterable, Generator
+from typing import Iterable, Iterator
 
 from .search import search
 from .identify import identify, check_valid
@@ -17,9 +17,14 @@ class BigNum:
     """ wrapper for y-cruncher file to get matadata, search and iterate"""
     def __init__(self, path:str|Path) -> None:
         self.path = Path(path)
-        if not self.path.exists():
+        if not (self.path.exists() and check_valid(self.path)):
             return
-        self.name, self.base, self.format, self.intpart, self.radix_pos = identify(self.path) # sweep it under the rug lol
+        self.info = identify(self.path)
+        self.name = self.info.name
+        self.base = self.info.base
+        self.format = self.info.format
+        self.radix_pos = self.info.radix_pos
+        self.intpart = self.info.int_part
         self.size = self.path.stat().st_size - self.radix_pos - 1 # file_size - radix_pos (- off by one error)
         self._first_digits = None # lazy loaded because it can be big
         self._key = (self.name, str(self.base), self.format) # static key
@@ -53,10 +58,10 @@ class BigNum:
             return self.mmap[base+start:base+stop:step]
 
         if isinstance(i, str):
-            return search(self.path, i.encode())
+            return search(self.info, i.encode())
 
         if isinstance(i, bytes):
-            return search(self.path, i)
+            return search(self.info, i)
 
         if isinstance(i, Iterable):
             funcs = {
@@ -64,21 +69,21 @@ class BigNum:
             }
             elements = [funcs.get(type(e),lambda x:x)(e) for e in i]
             if all(isinstance(e, bytes) for e in elements):
-                return search(self.path, elements)
+                return search(self.info, elements)
             return [self[e] for e in elements]
 
-    def __iter__(self) -> Generator[bytes]:
+    def __iter__(self) -> Iterator[bytes]:
         """ yields digits as bytes, radix is never included no matter the state of Switches.one_indexed"""
         i = iter(self.mmap)
         for _ in range(self.radix_pos+1):
             next(i)
-        yield from i # no pyright, this is not a Generator[int], mmap always returns single bytes: github.com/python/cpython/issues/70546
+        yield from i # no pyright, this is not a Generator[int], mmap always returns single bytes: github.com/python/cpython/issues/70546 # type:ignore
 
     def __contains__(self, pattern:str|bytes) -> bool:
         """ should technically always return true, but its for the limited file only :P """
         if isinstance(pattern, str):
             pattern = pattern.encode()
-        return search(self.path, pattern) != -1
+        return search(self.info, pattern) != -1
 
     def __hash__(self) -> int:
         return self._hash
@@ -182,7 +187,7 @@ class BigNum:
                 base_len = len(base)
 
         # how many digits are needed for given base size (ignore ycd compression)
-        digits_needed = int(digits*log(base_len)/log(self.base)+1)
+        digits_needed = int(digits*log(base_len,self.base)+1)
 
         if self.format == "ycd":
             num_str = ycd_to_str(self.path, digits_needed)
@@ -258,4 +263,3 @@ def get_one(
     """
     files = get_all(name, base, format, size, num_dir, recursive)
     if files: return files[0]
-
