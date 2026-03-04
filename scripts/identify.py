@@ -3,12 +3,26 @@
 import sqlite3
 from pathlib import Path
 from hashlib import md5
+from dataclasses import dataclass
+from math import log
 
 from .const import CONST_TABLE, IDENTIFY_TABLE_NAME
-from .var import Paths
+from .var import Paths, Sizes
 from .convert import ycd_to_str, hex_to_dec
 
-def identify(file_path:Path) -> tuple[str,int,str,int,int]:
+@dataclass
+class BigNumInfo:
+    path:Path # the path to the file
+    name:str # the name of the constant, like "pi", "e" etc
+    base:int # base of the constant, should either be 10 or 16 since y-crucnher does only that
+    format:str # format of the file, can only be "txt" or "ycd"
+    int_part:int # the integer part saved as int
+    radix_pos:int # position of the radix pos inside the file
+    file_size:int # actual filesize
+    decimal_digits:int # the amount of decimal digits in the file, no matter if file is dec or hex
+    table_name:str # the table name for the constant
+
+def identify(file_path:Path) -> BigNumInfo:
     """
     unified identify method for number files, raises ValueError if illegal file
 
@@ -22,8 +36,10 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
     4. int_part  (3,0...)
     5. radix_pos (1,196...)
     """
+    file_size = file_path.stat().st_size
+
     with file_path.open("rb") as f:
-        chunk = f.read(400)
+        chunk = f.read(500)
 
     format = "ycd" if b"#Compressed Digit File" in chunk else "txt"
 
@@ -31,10 +47,11 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         radix_pos = chunk.find(b".")
         if radix_pos == -1:
             raise ValueError("no radix point found")
-        int_part = chunk[:radix_pos]
         frac_part = chunk[radix_pos+1:]
-        base = len(set(frac_part))
+        base = len(set(frac_part)) # base is determinde by the ammount of different chars after radix, so only estimate, but worst case is 16 different chars in ~500 chars
+        int_part = int(chunk[:radix_pos],base)
         num = chunk.decode()
+        decimal_digits = file_size - radix_pos
     else:
         radix_pos = chunk.find(b"EndHeader\r\n\r\n")
         if radix_pos == -1:
@@ -44,14 +61,15 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         base = int(chunk.split(b"Base:\t")[1].split(b"\r\n\r\n")[0].decode())
         num = ycd_to_str(file_path,110)
         first_digits = chunk.split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0]
-        int_part, _ = first_digits.split(b".")
+        int_part = int(first_digits.split(b".")[0],base)
+        decimal_digits = int(chunk.split(b"Blocksize:\t")[1].split(b"\r\n")[0])
 
     # y-cruncher only outputs hex and dec
     if base!=10 and base!=16:
         raise ValueError("illegal base")
 
-    # always convert to decimal, since identify table only hosts hashes to decimal expansion
     if base == 16:
+        decimal_digits *= int(log(16,10))
         num = hex_to_dec(num)
 
     # check if db exists
@@ -76,14 +94,16 @@ def identify(file_path:Path) -> tuple[str,int,str,int,int]:
         print("WARN: identify table not created yet, using fallback")
         name = CONST_TABLE.get(num[:7],"unknown")
 
-    return name, base, format, int(int_part), radix_pos
+    table_name = "_".join(map(str,(name,base,format)))
+
+    return BigNumInfo(file_path,name,base,format,int(int_part),radix_pos,file_size,decimal_digits,table_name)
 
 def get_table_name(file_path:Path) -> str|None:
     """ helper function that calls identify and returns the table name if constant name is known """
-    name, base, format, _, _ = identify(file_path)
-    if name == "unknown":
+    info = identify(file_path)
+    if info.name == "unknown":
         return
-    return "_".join(map(str, (name,base,format)))
+    return "_".join(map(str, (info.name,info.base,info.format)))
 
 def check_valid(file_path:Path) -> bool:
     """ check wether a given file is a usable number file """
