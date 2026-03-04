@@ -12,6 +12,8 @@ theres a unified search function that houses all other search functions. In ther
 that unified search function also adds stuff to the database if enabled and not found on there
 
 # installation
+ - install astral/uv
+ - make sure you have cpython 3.14, pypy3 not reccomended sadly
  - `git clone https://github.com/p1geondove/irranalyze.git`
  - `cd irranalyze`
  - `uv venv`
@@ -33,11 +35,16 @@ that unified search function also adds stuff to the database if enabled and not 
 >>> pi[b"123","456"] # multi string search is more efficient
 {b'123': 1924, b'456': 251}
 
->>> Switches.one_indexed = False # programmers arent normal humans, nobody says the zeroth digit of pi is 1, so you can switch that if needed
+>>> Switches.one_indexed = False # if you search for 1 it will return 0 now instead of 1
+>>> pi["1"] # however this has already been saved in the db
+1
+>>> Paths.sqlite_path.unlink() # so before toggleing indexing mode reset the db
+>>> pi["1"] # caching always comes at an expense...
+0
+
 >>> pi = get_one("pi",16,"ycd") # hex and .ycd files are fine
 >>> pi[0]
 b'\x00'
-
 >>> for d in pi: # iterable, wrapper to iter(mmap), yields individual bytes
 ...     print(d)
 b'\x00'
@@ -74,7 +81,12 @@ b'number'
 
 >>> res = pi[txt_to_num_all("number")] # takes 1:30 min:sec
 >>> res = pi[txt_to_num_all("number")] # takes 6.13 ms since its now in the database
->>> len(res) = 4096 # this is a dict[bytes,int], returns all patterns, but ones not found are -1
 >>> sorted(((pat,pos) for pat,pos in res.items() if pos!=-1), key=lambda x:x[1]) # sort the ones that are found
 [(b'919864278217', 901428513)]
 ```
+
+# todo
+ - implement aho-corasick algorithm for multi_search
+ - add functionality:
+   - find streak
+   - find street
