@@ -5,10 +5,13 @@ import math
 import sqlite3
 from mmap import mmap, ACCESS_READ, MADV_SEQUENTIAL
 from multiprocessing import Process, Value, Array
+from threading import Thread
+import hyperscan
 
 from .identify import BigNumInfo
 from .const import PAGE_SIZE
 from .var import Sizes, Paths, Switches
+from .helper import timer
 
 def search_quick(file_info:BigNumInfo, pattern:bytes) -> int:
     """ low latency search, but only first couple digits """
@@ -159,7 +162,8 @@ def _multi_search_mp(file_info:BigNumInfo, patterns:list[bytes], sector:tuple[in
                 # determine chunk bounds
                 chunk_start = chunk_end - pattern_length
 
-def multi_search_mp(file_info:BigNumInfo, patterns:list[bytes], num_workers:int=Sizes.max_processes) -> dict[bytes,int]:
+@timer
+def multi_search_mp_old(file_info:BigNumInfo, patterns:list[bytes], num_workers:int=Sizes.max_processes) -> dict[bytes,int]:
     """ multiprocessing approach, fast but expensive and potentially lots of overhead """
     num_workers = max(1,  num_workers or os.cpu_count() or 1)
     sector_size = math.ceil(file_info.file_size/num_workers) // PAGE_SIZE * PAGE_SIZE
@@ -184,6 +188,53 @@ def multi_search_mp(file_info:BigNumInfo, patterns:list[bytes], num_workers:int=
         p.join()
 
     return {pattern:pos+Switches.one_indexed for pattern,pos in zip(patterns,found_array)} # also here pyright thinks that the array is not iterable, but it is... # type:ignore
+
+def _multi_search_hyper(sector_start:int, sector:memoryview, found:dict[int,list], db:hyperscan.Database):
+    def match_handler(id:int, from_:int, to:int, flags:int, context=None):
+        found[id].append(to + sector_start)
+    db.scan(sector, match_handler)
+    sector.release()
+
+def multi_search_mp(file_info:BigNumInfo, patterns:list[bytes], num_workers:int=Sizes.max_processes) -> dict[bytes,int]:
+    num_workers = max(1,  num_workers or os.cpu_count() or 1)
+    sector_size = math.ceil(file_info.file_size/num_workers) // PAGE_SIZE * PAGE_SIZE
+    threads:list[Thread] = []
+    overlap = max(len(p) for p in patterns)
+    found = {n:[-1] for n,pat in enumerate(patterns)}
+    id_pattern_map = {n:pat for n,pat in enumerate(patterns)}
+    db = hyperscan.Database()
+    ids = list(range(len(patterns)))
+    flags = [hyperscan.HS_FLAG_SINGLEMATCH] * len(patterns)
+    db.compile(patterns, ids, flags=flags)
+
+    with file_info.path.open("r+b") as file:
+        with mmap(file.fileno(), length=0, access=ACCESS_READ) as mm:
+            mm.madvise(MADV_SEQUENTIAL)
+            mv = memoryview(mm)
+
+            for i in range(num_workers):
+                start = max(i * sector_size, file_info.radix_pos)
+                end = min(start + sector_size + overlap, file_info.file_size)
+                sector = mv[start:end]
+                t = Thread(target=_multi_search_hyper, args=(start, sector, found, db))
+                t.start()
+                threads.append(t)
+
+            for t in threads:
+                t.join()
+
+            mv.release()
+
+    pairs = {}
+    for id, pos in found.items():
+        pat = id_pattern_map[id]
+        if len(pos) > 1:
+            pos.remove(-1)
+            pos = min(pos) - len(pat) - file_info.radix_pos + Switches.one_indexed - 1
+        else:
+            pos = -1
+        pairs[pat] = pos
+    return pairs
 
 def search_db(file_info:BigNumInfo, pattern:bytes) -> int|None:
     """ very quick but limited search, only returns whats stored in the db """

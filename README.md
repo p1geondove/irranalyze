@@ -90,3 +90,26 @@ b'number'
  - add functionality:
    - find streak
    - find street
+
+# performance
+## multiprocessing, each process own mmap, loop over patterns for each chunk
+>>> pismall = get_one("pi")
+>>> pibig = get_one("pi", size=10**11)
+>>> d = multi_search_mp(pismall.info, list(txt_to_num_all(b"num")))
+multi_search_mp took 101.10ms
+>>> d = multi_search_mp(pismall.info, list(txt_to_num_all(b"number")))
+multi_search_mp took 07:30 mm:ss
+>>> d = multi_search_mp(pibig.info, list(txt_to_num_all(b"num")))
+multi_search_mp took 103.74ms
+>>> d = multi_search_mp(pibig.info, list(txt_to_num_all(b"number")))
+took way too long, ctrl+c after 30+ min
+
+## threading, one global mmap, hyperscan
+>>> multi_search_hyper(pismall.info, list(txt_to_num_all(b"num")))
+multi_search_hyper took 30.73ms
+>>> multi_search_hyper(pismall.info, list(txt_to_num_all(b"number")))
+multi_search_hyper took 438.43ms
+>>> d = multi_search_hyper(pibig.info, list(txt_to_num_all(b"num")))
+multi_search_hyper took 69.90ms
+>>> d = multi_search_hyper(pibig.info, list(txt_to_num_all(b"number")))
+multi_search_hyper took 7.42 s
