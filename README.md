@@ -1,19 +1,16 @@
 # searches and converts "y-cruncher" outputs
-
 mostly a wrapper for y-cruncher nums, extensive BigNum class with useful functions like ordering, subscription, iterating
 
-searching comes in three levels:
-1. database (sqlite ~1ms on a 150gb db)
-2. quick: BigNum has a @property that saves 100k digits, put the ol .find on that (~200us worst case)
-3. extensive: chunks the file and searches each chunk, by default multiprocessing + mmap, wowzers (~10s for 100gb, very diskio intensive, fast nvme recommended)
+the heart of this project lies in the searching and identifying of number file
+for searching theres two approaches:
+1. database: sqlite saves already searched substrings for each constant
+2. file: thanks to hyperscan searching trough a file even with many patterns is very fast
 
-theres a unified search function that houses all other search functions. In there you can enable/disable database interaction as well as multiprocessing
-
-that unified search function also adds stuff to the database if enabled and not found on there
+identifying a file is done by first building a identifier table which stores md5sums of the first 100 digits and corrosponding names for many different numbers
 
 # installation
  - install astral/uv
- - make sure you have cpython 3.14, pypy3 not reccomended sadly
+ - make sure you have cpython 3.14 (freethreading reccomended, pypy3 not reccomended sadly)
  - `git clone https://github.com/p1geondove/irranalyze.git`
  - `cd irranalyze`
  - `uv venv`
@@ -79,10 +76,8 @@ b'number'
 >>> len(list(_))
 4096
 
->>> res = pi[txt_to_num_all("number")] # takes 1:30 min:sec
->>> res = pi[txt_to_num_all("number")] # takes 6.13 ms since its now in the database
->>> sorted(((pat,pos) for pat,pos in res.items() if pos!=-1), key=lambda x:x[1]) # sort the ones that are found
-[(b'919864278217', 901428513)]
+>>> res = pi[txt_to_num_all("number")] # takes 458.42ms
+>>> res = pi[txt_to_num_all("number")] # takes 6.13ms since its now in the database
 ```
 
 # todo
@@ -91,25 +86,3 @@ b'number'
    - find streak
    - find street
 
-# performance
-## multiprocessing, each process own mmap, loop over patterns for each chunk
->>> pismall = get_one("pi")
->>> pibig = get_one("pi", size=10**11)
->>> d = multi_search_mp(pismall.info, list(txt_to_num_all(b"num")))
-multi_search_mp took 101.10ms
->>> d = multi_search_mp(pismall.info, list(txt_to_num_all(b"number")))
-multi_search_mp took 07:30 mm:ss
->>> d = multi_search_mp(pibig.info, list(txt_to_num_all(b"num")))
-multi_search_mp took 103.74ms
->>> d = multi_search_mp(pibig.info, list(txt_to_num_all(b"number")))
-took way too long, ctrl+c after 30+ min
-
-## threading, one global mmap, hyperscan
->>> multi_search_hyper(pismall.info, list(txt_to_num_all(b"num")))
-multi_search_hyper took 30.73ms
->>> multi_search_hyper(pismall.info, list(txt_to_num_all(b"number")))
-multi_search_hyper took 438.43ms
->>> d = multi_search_hyper(pibig.info, list(txt_to_num_all(b"num")))
-multi_search_hyper took 69.90ms
->>> d = multi_search_hyper(pibig.info, list(txt_to_num_all(b"number")))
-multi_search_hyper took 7.42 s
