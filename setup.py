@@ -3,9 +3,9 @@
 from pathlib import Path
 import os
 
-from scripts.var import Paths, Sizes, Switches
-from scripts import build_db
-from scripts.helper import format_size
+from irranalyze.var import Paths, Sizes, Switches
+from irranalyze import build_db
+from irranalyze.helper import format_size
 
 def main():
     #  === Setting num_dir ===
@@ -207,7 +207,7 @@ def main():
 
         # Build search tables
         while True:
-            from scripts.bignum import get_all
+            from irranalyze.bignum import get_all
             nums = set(get_all(num_dir=Paths.num_dir))
             if not nums:
                 print(f"No number files found, please add number files to {Paths.num_dir}")

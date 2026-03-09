@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from math import log
 
 from .const import CONST_TABLE, IDENTIFY_TABLE_NAME
-from .var import Paths, Sizes
-from .convert import ycd_to_str, hex_to_dec
+from .var import Paths
+from .convert import hex_to_dec, ycd_to_str_gen
 
 @dataclass
 class BigNumInfo:
@@ -59,9 +59,10 @@ def identify(file_path:Path) -> BigNumInfo:
         else:
             radix_pos += 13 # 13 = EndHeader\r\n\r\n
         base = int(chunk.split(b"Base:\t")[1].split(b"\r\n\r\n")[0].decode())
-        num = ycd_to_str(file_path,110)
         first_digits = chunk.split(b"FirstDigits:\t")[1].split(b"\r\n\r\n")[0]
         int_part = int(first_digits.split(b".")[0],base)
+        frac_part = "".join(ycd_to_str_gen(memoryview(chunk)[radix_pos+1:], base))
+        num = f"{int_part}.{frac_part}"
         decimal_digits = int(chunk.split(b"Blocksize:\t")[1].split(b"\r\n")[0])
 
     # y-cruncher only outputs hex and dec

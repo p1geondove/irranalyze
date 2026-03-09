@@ -33,4 +33,3 @@ def timer(func):
         print(f"{func.__name__} took {format_time(perf_counter() - start)}")
         return res
     return wrapper
-

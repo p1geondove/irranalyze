@@ -32,7 +32,7 @@ def build_identifier(verbose:bool=False):
 
     # only 100 digits are used but for big expressions evaluation can yield high error so increasing precision
     # if you wanna add constants maybe put this to 200 and look at the md5 hash of the generated db, then lower it until it changes, thats how i did it
-    # 120 for not is the limit, altho funnily enough all my files still get identified with 105
+    # 120 for now is the limit, altho funnily enough all my files still get identified with 105
     mpmath.mp.dps = 120
     primes = [mpmath.mpf(p) for p in sympy.primerange(1e5)]
     e = mpmath.e
@@ -216,6 +216,7 @@ def build_identifier(verbose:bool=False):
                 if verbose:
                     print(f"{name}:{blob}", end=" "*20+"\r")
 
+    mpmath.mp.dps = 20
     # put all aggregated hash and name pairs into the database
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
@@ -241,7 +242,6 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     patterns_done = 0
     patterns_total = amount_digits * max_substring_len
 
-    # with sqlite3.connect(Paths.sqlite_path) as conn:
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
 
@@ -250,7 +250,7 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
 
     for startpos in range(0, amount_digits, Sizes.pairs_per_insert):
         chunk = num[startpos : startpos + Sizes.pairs_per_insert]
-        patterns = get_patterns(chunk, max_substring_len, startpos+1) # this always yields bytes
+        patterns = get_patterns(chunk, max_substring_len, startpos+1)
         cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
         conn.commit()
         patterns_done += Sizes.pairs_per_insert * max_substring_len
@@ -278,6 +278,7 @@ class SharedMem:
     time_start:float
     finished:bool = False
     tmp_tables:Queue[Path] = Queue()
+    tmp_tables_dir:Path
 
 def progress_mt(mem:SharedMem):
     while not mem.finished:
@@ -295,16 +296,15 @@ def progress_mt(mem:SharedMem):
 def build_mt(mem:SharedMem):
     while not mem.nums_queue.empty():
         num = mem.nums_queue.get()
-        db_path = Path(num.table_name+".sqlite.tmp")
+        db_path = mem.tmp_tables_dir/Path(num.table_name)
 
-        # with sqlite3.connect(db_path) as conn:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
         for startpos in range(0, mem.amount_digits, Sizes.pairs_per_insert):
             chunk = num[startpos : startpos + Sizes.pairs_per_insert]
-            patterns = get_patterns(chunk, mem.max_substring_len, startpos+1) # this always yields bytes
+            patterns = get_patterns(chunk, mem.max_substring_len, startpos+1)
             cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
             conn.commit()
             mem.patterns_done += Sizes.pairs_per_insert * mem.max_substring_len
@@ -320,6 +320,8 @@ def build_many(amount_digits:int, max_substring_len:int, nums:list[BigNum]):
     mem.time_start = perf_counter()
     mem.files_total = len(nums)
     mem.patterns_total = amount_digits * max_substring_len * len(nums)
+    mem.tmp_tables_dir = Path("tmp_part_tables")
+    mem.tmp_tables_dir.mkdir()
 
     for n in nums:
         mem.nums_queue.put(n)
@@ -341,11 +343,10 @@ def build_many(amount_digits:int, max_substring_len:int, nums:list[BigNum]):
     progress_thread.join()
 
     print("\nDone creating tables, now merging them")
-    # with sqlite3.connect(Paths.sqlite_path) as conn:
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
     while not mem.tmp_tables.empty():
-        tmp_db_path = mem.tmp_tables.get() # type pathlib.Path
+        tmp_db_path = mem.tmp_tables.get()
         cursor.execute(f"""ATTACH DATABASE "{str(tmp_db_path)}" AS tmp_db""")
         cursor.execute("SELECT name FROM tmp_db.sqlite_master WHERE type='table'")
         table_name = cursor.fetchone()[0]
@@ -356,5 +357,10 @@ CREATE TABLE IF NOT EXISTS "{table_name}" AS SELECT * FROM tmp_db."{table_name}"
         tmp_db_path.unlink()
     conn.commit()
     conn.close()
+
+    for file in mem.tmp_tables_dir.iterdir():
+        file.unlink()
+    mem.tmp_tables_dir.rmdir()
+
     print("Done!")
 

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from scripts.const import SETTINGS_PATH
+from .const import SETTINGS_PATH
 
 """
 This has to be the most fucky-wucky thing i ever did, but it works wonderfully

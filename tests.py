@@ -2,10 +2,10 @@
 
 import unittest
 
-from scripts import BigNum, build_db
-from scripts.var import Paths, Sizes, Switches
-from scripts.search import search_mp, search_quick, search_st, multi_search_mp, multi_search_quick, multi_search_st
-from scripts.identify import identify
+from irranalyze import BigNum, build_db
+from irranalyze.var import Paths, Sizes, Switches
+from irranalyze.identify import identify
+from irranalyze.convert import hex_to_dec, ycd_to_str, str_to_ycd
 
 from pathlib import Path
 
@@ -132,12 +132,16 @@ class TestSearch(unittest.TestCase):
         pi = BigNum(PATH_PI_DEC_TXT)
         for pat,pos in TRUTHS_PI_DEC_TXT.items():
             self.assertEqual(pi[pat], pos-1)
+        for pat,pos in pi[TRUTHS_PI_DEC_TXT.keys()].items():
+            self.assertEqual(pos, TRUTHS_PI_DEC_TXT[pat.decode()]-1)
 
     def test_search_str_one_index(self):
         Switches.one_indexed = True
         pi = BigNum(PATH_PI_DEC_TXT)
         for pat,pos in TRUTHS_PI_DEC_TXT.items():
             self.assertEqual(pi[pat], pos)
+        for pat,pos in pi[TRUTHS_PI_DEC_TXT.keys()].items():
+            self.assertEqual(pos, TRUTHS_PI_DEC_TXT[pat.decode()])
 
     # --- BYTES SUBSCRIPT ---
     def test_search_bytes_zero_index(self):
@@ -151,78 +155,6 @@ class TestSearch(unittest.TestCase):
         pi = BigNum(PATH_PI_DEC_TXT)
         for pat,pos in TRUTHS_PI_DEC_TXT.items():
             self.assertEqual(pi[pat.encode()], pos)
-
-    # --- QUICK ---
-    def test_search_quick_zero_index(self):
-        Switches.one_indexed = False
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertIn(search_quick(INFO_PI_DEC_TXT,pat.encode()), {pos-1,-1})
-
-    def test_search_quick_one_index(self):
-        Switches.one_indexed = True
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertIn(search_quick(INFO_PI_DEC_TXT,pat.encode()), {pos,-1})
-
-    # --- SINGLE THREADED ---
-    def test_search_st_zero_index(self):
-        Switches.one_indexed = False
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertEqual(search_st(INFO_PI_DEC_TXT, pat.encode()), pos-1)
-
-    def test_search_st_one_index(self):
-        Switches.one_indexed = True
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertEqual(search_st(INFO_PI_DEC_TXT, pat.encode()), pos)
-
-    # --- MULTIPROCESSING ---
-    def test_search_mp_zero_index(self):
-        Switches.one_indexed = False
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertEqual(search_mp(INFO_PI_DEC_TXT, pat.encode()), pos-1)
-
-    def test_search_mp_one_index(self):
-        Switches.one_indexed = True
-        for pat,pos in TRUTHS_PI_DEC_TXT.items():
-            self.assertEqual(search_mp(INFO_PI_DEC_TXT, pat.encode()), pos)
-
-    # --- MULTI SEARCH QUICK ---
-    def test_search_multi_quick_zero_index(self):
-        Switches.one_indexed = False
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():(pos-1 if pos < Sizes.first_digits_amount else -1) for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_quick(INFO_PI_DEC_TXT, patterns), expected)
-        
-    def test_search_multi_quick_one_index(self):
-        Switches.one_indexed = True
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():(pos if pos < Sizes.first_digits_amount else -1) for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_quick(INFO_PI_DEC_TXT, patterns), expected)
-
-    # --- MULTI SEARCH MULTIPROCESSING ---
-    def test_search_multi_mp_zero_index(self):
-        Switches.one_indexed = False
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():pos-1 for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_mp(INFO_PI_DEC_TXT, patterns), expected)
-
-    def test_search_multi_mp_one_index(self):
-        Switches.one_indexed = True
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():pos for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_mp(INFO_PI_DEC_TXT, patterns), expected)
-
-    # --- MULTI SEARCH SINGLE THREADED ---
-    def test_search_multi_st_zero_index(self):
-        Switches.one_indexed = False
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():pos-1 for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_st(INFO_PI_DEC_TXT, patterns), expected)
-
-    def test_search_multi_st_one_index(self):
-        Switches.one_indexed = True
-        patterns = list(map(str.encode, TRUTHS_PI_DEC_TXT.keys()))
-        expected = {pat.encode():pos for pat,pos in TRUTHS_PI_DEC_TXT.items()}
-        self.assertEqual(multi_search_st(INFO_PI_DEC_TXT, patterns), expected)
 
 class TestAttributes(unittest.TestCase):
     def setUp(self) -> None:
@@ -264,17 +196,42 @@ class TestAttributes(unittest.TestCase):
         self.assertEqual(pi_hex_txt.to_base(10,10), "3.14159265")
         self.assertEqual(pi_dec_ycd.to_base(10,10), "3.14159265")
         self.assertEqual(pi_hex_ycd.to_base(10,10), "3.14159265")
+        self.assertEqual(pi_dec_txt.to_base("alnum",10000), pi_dec_ycd.to_base("alnum",10000))
+        self.assertEqual(pi_dec_ycd.to_base("alnum",10000), pi_hex_txt.to_base("alnum",10000))
+        self.assertEqual(pi_hex_txt.to_base("alnum",10000), pi_hex_ycd.to_base("alnum",10000))
+
+class TestConverters(unittest.TestCase):
+    def test_hex_to_dec(self):
+        pi_dec_txt = BigNum(PATH_PI_DEC_TXT)
+        pi_hex_txt = BigNum(PATH_PI_HEX_TXT)
+        dec_str = hex_to_dec(pi_hex_txt.mmap[:10000].decode(),10000)
+        self.assertEqual(len(dec_str), 10000)
+        self.assertEqual(dec_str, pi_dec_txt.mmap[:10000].decode())
+
+    def test_str_to_ycd(self):
+        pi_dec_txt = BigNum(PATH_PI_DEC_TXT)
+        pi_dec_ycd = BigNum(PATH_PI_DEC_YCD)
+        ycd = str_to_ycd(memoryview(pi_dec_txt)[pi_dec_txt.radix_pos+1:], 10000)
+        self.assertEqual(len(ycd), 10000)
+        self.assertEqual(ycd, pi_dec_ycd[:10000])
+
+    def test_ycd_to_str(self):
+        pi_dec_txt = BigNum(PATH_PI_DEC_TXT)
+        pi_dec_ycd = BigNum(PATH_PI_DEC_YCD)
+        string = ycd_to_str(memoryview(pi_dec_ycd)[pi_dec_ycd.radix_pos+1:], 10, 10000)
+        self.assertEqual(len(string), 10000)
+        self.assertEqual(string, pi_dec_txt[:10000].decode())
 
 if __name__ == "__main__":
-    BACKUP_DB_PATH.unlink(True)
-    IDENTIFY_DB_PATH.unlink(True)
+    BACKUP_DB_PATH.unlink(True) # remove old backup
+    IDENTIFY_DB_PATH.unlink(True) # remove old identify_only db
     if Paths.sqlite_path.exists():
         Paths.sqlite_path.move(BACKUP_DB_PATH) # backup the current user created database
     build_db.build_identifier() # overwrite with a fresh db
     Paths.sqlite_path.copy(IDENTIFY_DB_PATH) # copy that fresh db to a safe place
-    unittest.main() # run tests
+    unittest.main(exit=False) # run tests
     if Paths.sqlite_path.exists():
         BACKUP_DB_PATH.move(Paths.sqlite_path) # overwrite testing db with backup
         BACKUP_DB_PATH.unlink(True) # this also doesnt remove the db
-    IDENTIFY_DB_PATH.unlink(True) # remove temp db for testing
+    IDENTIFY_DB_PATH.unlink(True) # remove temp db for testing, somehow still there after tests
 
