@@ -4,7 +4,6 @@ import sqlite3
 from pathlib import Path
 from fractions import Fraction
 from typing import Any
-
 from itertools import chain
 from threading import Thread
 from queue import Queue
@@ -216,7 +215,7 @@ def build_identifier(verbose:bool=False):
                 if verbose:
                     print(f"{name}:{blob}", end=" "*20+"\r")
 
-    mpmath.mp.dps = 20
+    mpmath.mp.dps = 20 # reset working precision
     # put all aggregated hash and name pairs into the database
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
@@ -241,6 +240,7 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     time_start = perf_counter()
     patterns_done = 0
     patterns_total = amount_digits * max_substring_len
+    mv = memoryview(num)
 
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
@@ -248,8 +248,8 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     print(f"creating table {num.table_name}"+" "*50)
     cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
-    for startpos in range(0, amount_digits, Sizes.pairs_per_insert):
-        chunk = num[startpos : startpos + Sizes.pairs_per_insert]
+    for startpos in range(num.radix_pos+1, amount_digits, Sizes.pairs_per_insert):
+        chunk = mv[startpos : startpos + Sizes.pairs_per_insert].tobytes()
         patterns = get_patterns(chunk, max_substring_len, startpos+1)
         cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
         conn.commit()
@@ -264,6 +264,7 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
         print(" "*120+"\r"+f"elapsed:{time_elapsed_f}\t eta:{eta}\t patterns:{speed_pattern_f}", end="\r")
 
     conn.close()
+    mv.release()
     total_time = perf_counter()-time_start
     print(f"done building search string table {num.table_name} in {format_time(total_time)}")
 
@@ -296,20 +297,22 @@ def progress_mt(mem:SharedMem):
 def build_mt(mem:SharedMem):
     while not mem.nums_queue.empty():
         num = mem.nums_queue.get()
+        mv = memoryview(num)
         db_path = mem.tmp_tables_dir/Path(num.table_name)
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
-        for startpos in range(0, mem.amount_digits, Sizes.pairs_per_insert):
-            chunk = num[startpos : startpos + Sizes.pairs_per_insert]
+        for startpos in range(num.radix_pos+1, mem.amount_digits, Sizes.pairs_per_insert):
+            chunk = mv[startpos : startpos + Sizes.pairs_per_insert].tobytes()
             patterns = get_patterns(chunk, mem.max_substring_len, startpos+1)
             cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
             conn.commit()
             mem.patterns_done += Sizes.pairs_per_insert * mem.max_substring_len
 
         conn.close()
+        mv.release()
         mem.files_done += 1
         mem.tmp_tables.put(db_path)
 
@@ -330,8 +333,7 @@ def build_many(amount_digits:int, max_substring_len:int, nums:list[BigNum]):
     progress_thread.start()
 
     threads = []
-    amt_processes = min(Sizes.max_processes, len(nums))
-    for id in range(amt_processes):
+    for id in range(len(nums)):
         t = Thread(target=build_mt, args=(mem,))
         threads.append(t)
         t.start()
