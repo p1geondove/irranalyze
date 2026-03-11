@@ -16,14 +16,12 @@ class _Sizes:
     chunk_size: int
     first_digits_amount: int
     pairs_per_insert: int
-    max_processes: int
 
     def __init__(self) -> None:
         raw = json.loads(SETTINGS_PATH.read_text())
         object.__setattr__(self, "chunk_size", int(raw["chunk_size"]))
         object.__setattr__(self, "first_digits_amount", int(raw["first_digits_amount"]))
         object.__setattr__(self, "pairs_per_insert", int(raw["pairs_per_insert"]))
-        object.__setattr__(self, "max_processes", int(raw["max_processes"]))
 
     def __setattr__(self, name: str, value: object) -> None:
         object.__setattr__(self, name, value)
@@ -35,7 +33,6 @@ class _Sizes:
             "chunk_size":self.chunk_size,
             "first_digits_amount":self.first_digits_amount,
             "pairs_per_insert":self.pairs_per_insert,
-            "max_processes":self.max_processes,
         })
         SETTINGS_PATH.write_text(json.dumps(raw, indent=2))
 
