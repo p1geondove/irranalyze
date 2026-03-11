@@ -2,8 +2,7 @@
   "num_dir": "/path/to/numbers/",
   "sqlite_path": "irranalyze.sqlite",
   "report_not_found": true,
-  "one_indexed": true,
-  "max_processes": -1,
+  "one_indexed": false,
   "pairs_per_insert": 100000,
   "chunk_size": 1048576,
   "first_digits_amount": 100000

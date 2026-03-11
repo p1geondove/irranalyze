@@ -1,7 +1,6 @@
 # setup.py - useful dialog setup script
 
 from pathlib import Path
-import os
 
 from irranalyze.var import Paths, Sizes, Switches
 from irranalyze import build_db
@@ -63,7 +62,7 @@ def main():
             try:
                 val = bool(prompt)
                 break
-            except KeyboardInterrupt|EOFError:
+            except (KeyboardInterrupt,EOFError):
                 raise
             except:
                 print(f"cant convert {prompt} to bool")
@@ -89,35 +88,13 @@ def main():
             try:
                 val = bool(prompt)
                 break
-            except KeyboardInterrupt|EOFError:
+            except (KeyboardInterrupt,EOFError):
                 raise
             except:
                 print(f"cant convert {prompt} to bool")
                 continue
     Switches.one_indexed = val
     print(f"updated setting 'one_indexed' to {val}")
-
-    # === Setting max_processes ===
-    print("\n--- max_processes ---\nThe amount of processes/threads to spawn for search/build_db. More is usually better, usually keep this number to the number of cores you have")
-    del val
-    while True:
-        prompt = input(f"Amount of processes (usually amount of cpu cores) ({os.cpu_count() or 1}): ")
-        if prompt == "":
-            val = os.cpu_count() or 1
-            break
-        try:
-            val = int(prompt)
-        except KeyboardInterrupt|EOFError:
-            raise
-        except:
-            print(f"cant convert {prompt} to int")
-            continue
-        if val < 1:
-            print("amount of processes has to be more than zero")
-        else:
-            break
-    Sizes.max_processes = val
-    print(f"updated setting 'max_processes' to {val}")
 
     # === Setting pairs_per_insert ===
     print("\n--- pairs_per_insert ---\nThe amount of substring/position pairs to add to database while (optional) precalculating number tables. Changing this can yield minor improvements however default is fine")
@@ -130,7 +107,7 @@ def main():
             try:
                 prompt = eval(prompt)
                 val = int(prompt)
-            except KeyboardInterrupt|EOFError:
+            except (KeyboardInterrupt,EOFError):
                 raise
             except:
                 print(f"Cant convert {prompt} to int")
@@ -153,7 +130,7 @@ def main():
             try:
                 prompt = eval(prompt)
                 val = int(prompt)
-            except KeyboardInterrupt|EOFError:
+            except (KeyboardInterrupt,EOFError):
                 raise
             except:
                 print(f"Cant convert {prompt} to int")
@@ -176,7 +153,7 @@ def main():
             try:
                 prompt = eval(prompt)
                 val = int(prompt)
-            except KeyboardInterrupt|EOFError:
+            except (KeyboardInterrupt,EOFError):
                 raise
             except:
                 print(f"Cant convert {prompt} to int")
@@ -280,5 +257,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except KeyboardInterrupt|EOFError:
+    except (KeyboardInterrupt,EOFError):
         print("\nHey come back :'(")
