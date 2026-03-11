@@ -2,11 +2,15 @@
 
 import string
 from itertools import product
-from typing import Generator
+from typing import Generator, overload
 
 import mpmath
 import gmpy2
 
+@overload
+def txt_to_num(txt:str) -> str: ...
+@overload
+def txt_to_num(txt:bytes) -> bytes: ...
 def txt_to_num(txt:str|bytes) -> str|bytes:
     """
     converts alphabetic string to numeric string
@@ -26,6 +30,10 @@ def txt_to_num(txt:str|bytes) -> str|bytes:
     else:
         return "".join(f"{c-97:02d}" for c in map(ord,txt))
 
+@overload
+def txt_to_num_all(txt:str) -> Generator[str]: ...
+@overload
+def txt_to_num_all(txt:bytes) -> Generator[bytes]: ...
 def txt_to_num_all(txt:str|bytes) -> Generator[str|bytes]:
     """
     converts alphabetic string to numeric string
@@ -47,27 +55,39 @@ def txt_to_num_all(txt:str|bytes) -> Generator[str|bytes]:
         for nums in chars:
             yield "".join(nums)
 
-def num_to_txt(num:int|str|bytes, asbytes:bool=False) -> str|bytes:
+@overload
+def num_to_txt(num:int) -> str: ...
+@overload
+def num_to_txt(num:str) -> str: ...
+@overload
+def num_to_txt(num:bytes) -> bytes: ...
+def num_to_txt(num:int|str|bytes) -> str|bytes:
     """
     converts numeric string to alphabetic string
     pairs up the input string and calls chr(p%26+97) for every pair
     can be treated as the inverse to txt_to_num()
     txt_to_num("132012010417") -> "number"
     """
+    is_bytes = False
     if isinstance(num,int):
         num = str(num)
     elif isinstance(num,bytes):
+        is_bytes = True
         num = num.decode()
     if not num.isnumeric():
         raise ValueError("input must be numeric")
     if len(num)%2:
         print(f"WARN: input of num_to_txt should have even length")
     pairs = (int(a+b) for a,b in zip(num[::2], num[1::2]))
-    if asbytes:
+    if is_bytes:
         return "".join(chr(p%26+97) for p in pairs).encode()
     else:
         return "".join(chr(p%26+97) for p in pairs)
 
+@overload
+def alnum_to_num(txt:str) -> str: ...
+@overload
+def alnum_to_num(txt:bytes) -> bytes: ...
 def alnum_to_num(txt:str|bytes) -> str|bytes:
     """ similar to txt_to_num but allows for numbers in the input """
     isbytes = False
@@ -107,7 +127,7 @@ def ycd_to_str(in_bytes:bytes|memoryview, base:int, amount_digits:int=-1) -> str
         return out_string[:amount_digits]
     return out_string
 
-def str_to_ycd_gen(mv:memoryview, base:int) -> Generator[bytes, None, None]:
+def str_to_ycd_gen(mv:memoryview, base:int) -> Generator[bytes]:
     """ a quick generator for str to ycd conversion, needs a memoryview object with int + radix part cut off and the base its stored in """
     if base not in (10,16):
         raise ValueError(f"Base can only be 10 or 16, not {base}")
@@ -115,9 +135,20 @@ def str_to_ycd_gen(mv:memoryview, base:int) -> Generator[bytes, None, None]:
     for i in range(0, len(mv) - chunksize + 1, chunksize):
         yield int(mv[i:i+chunksize].tobytes(), base).to_bytes(8, "little")
 
-def str_to_ycd(in_string:str|memoryview, amount_digits:int=-1):
-    """ wrapper for str_to_ycd_gen that can also take bytes and only returns as many digits as needed """
-    base = len(set(in_string[:300]))
+def str_to_ycd(in_string:str|memoryview, amount_digits:int=-1) -> bytes:
+    """ wrapper for str_to_ycd_gen that can also take a string and only returns as many digits as needed """
+    chunk = in_string[:300]
+    if isinstance(chunk,memoryview):
+        try:
+            chunk.tobytes().decode()
+        except UnicodeDecodeError:
+            print("str_to_ycd was given a memoryview, but that memoryview contained non utf8 bytes. str_to_ycd must always be decodeable")
+            raise
+    chunk_set = set(chunk)
+    base = len(chunk_set)
+    if "." in chunk_set:
+        print("str_to_ycd expexts digits after and not including the radix point")
+        raise ValueError
     if base not in (10,16):
         raise ValueError(f"Base can only be 10 or 16, not {base}")
     digits_per_8byte = 19 if base == 10 else 16
