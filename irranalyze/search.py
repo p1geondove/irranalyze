@@ -10,23 +10,40 @@ from .var import Paths, Switches
 def search_file(file_info:BigNumInfo, patterns:list[bytes], lower_bound:int|None = None, upper_bound:int|None = None) -> dict[bytes,int]:
     def match_handler(id:int, from_:int, to:int, flags:int, context=None):
         pat = id_pattern_map[id]
-        positions[id_pattern_map[id]] = to - len(pat) + Switches.one_indexed - 1 + offset
+        positions[id_pattern_map[id]] = to - len(pat) + Switches.one_indexed - 1 + offset_bounds + offset_chunk
 
-    lower_bound = lower_bound if lower_bound else file_info.radix_pos
-    upper_bound = upper_bound if upper_bound else file_info.file_size
-    offset = lower_bound - file_info.radix_pos
+    # bounds and sizes
+    lower_bound = lower_bound if lower_bound is not None else file_info.radix_pos
+    upper_bound = upper_bound if upper_bound is not None else file_info.file_size
+    offset_bounds = lower_bound - file_info.radix_pos
+    bounds_size = upper_bound - lower_bound
+    chunk_size = 2**30
+    block_mode = bounds_size < 2**32
+
+    # hyperscan db setup
     id_pattern_map = {id:pat for id,pat in enumerate(patterns)}
     positions = {p:-1 for p in patterns}
-    db = hyperscan.Database()
+    scratch_space = hyperscan.Scratch()
+    db = hyperscan.Database(scratch_space, hyperscan.HS_MODE_BLOCK) # id like to use vector mode for big files
     ids = list(range(len(patterns)))
     flags = [hyperscan.HS_FLAG_SINGLEMATCH] * len(patterns)
-    db.compile(patterns, ids, flags=flags)
+    db.compile(patterns, ids, flags=flags) 
 
     with file_info.path.open("r+b") as f:
-        with mmap(f.fileno(), length=0, access=ACCESS_READ) as mm:
+        with mmap(f.fileno(), length=file_info.file_size, access=ACCESS_READ) as mm:
             mm.madvise(MADV_SEQUENTIAL)
             mv = memoryview(mm)[lower_bound:upper_bound]
-            db.scan(mv, match_handler)
+
+            if block_mode:
+                offset_chunk = 0
+                db.scan(mv, match_handler)
+            else:
+                # since python-hyperscan doesnt allow for blocks bigger than 4gib and vector / stream mode is bugged i have to fix their issue in python by chunking and runnign each chunk in block mode
+                # funnily enough underlying hyperscan also doesnt allow for blocks bigger than 4gib, unsigned long long are used in vector and streaming mode, but the length of blocks cant be bigger than 4gib, even tho they could i think, maybe fseek ftell legacy issue...
+                for offset_chunk in range(0, bounds_size, chunk_size):
+                    chunk = mv[offset_chunk : offset_chunk + chunk_size]
+                    db.scan(chunk, match_handler)
+                    chunk.release()
             mv.release()
 
     return positions
