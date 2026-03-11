@@ -12,8 +12,6 @@ from .convert import base_convert, hex_to_dec, ycd_to_str
 from .helper import format_size
 from .var import Sizes, Paths, Switches
 
-from .helper import timer
-
 @total_ordering
 class BigNum:
     """ wrapper for y-cruncher file to get matadata, search and iterate"""
@@ -52,14 +50,19 @@ class BigNum:
     @overload
     def __getitem__(self, i:bytes) -> int: ...
     @overload
-    def __getitem__(self, i:Iterable) -> dict[bytes,int]: ...
+    def __getitem__(self, i:Iterable[int]) -> list[bytes]: ...
+    @overload
+    def __getitem__(self, i:Iterable[slice]) -> list[bytes]: ...
+    @overload
+    def __getitem__(self, i:Iterable[str|bytes]) -> dict[bytes,int]: ...
 
     def __getitem__(self, i):
         """ just as the search function this is 1-indexed, ergo [0] is always '.', but slices like [:10] dont include the dot. Can also be used as a search proxy if input is str|bytes """
         if isinstance(i, int):
-            if i < Sizes.first_digits_amount:
+            if -1 < i < Sizes.first_digits_amount:
                 return bytes((self.first_digits[i],))
-            i += self.radix_pos+1-Switches.one_indexed
+            if i > -1:
+                i += self.radix_pos+1-Switches.one_indexed
             return bytes((self.mmap[i],))
 
         if isinstance(i, slice):
@@ -219,7 +222,6 @@ class BigNum:
 
         return base_convert(num_str, base, digits)
 
-@timer
 def get_all(
     name: str | None = None,
     base: int | None = None,
