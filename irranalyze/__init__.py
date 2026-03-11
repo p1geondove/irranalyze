@@ -1,12 +1,10 @@
 # __init__.py - init file to scripts module
 
 def sanity():
-    from .var import Paths, Sizes
+    from .var import Paths
     from pathlib import Path
     if Paths.num_dir == Path("/path/to/numbers/"):
         print(f"WARN: NUM_DIR ({Paths.num_dir}) is not set up properly, run setup.py")
-    if Sizes.max_processes == -1:
-        print(f"WARN: MAX_PROCESSES ({Sizes.max_processes}) is not set up properly, run setup.py")
 
 sanity()
 
