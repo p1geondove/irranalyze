@@ -1,16 +1,17 @@
 # searches and converts "y-cruncher" outputs
-mostly a wrapper for y-cruncher nums, extensive BigNum class with useful functions like ordering, subscription, iterating
+Mostly a wrapper for y-cruncher numbers, extensive BigNum class with useful functions like ordering, subscription, iterating
 
-the heart of this project lies in the searching and identifying of number file
-for searching theres two approaches:
+The heart of this project lies in the searching and identifying of number file
+
+For searching there's two approaches:
 1. database: sqlite saves already searched substrings for each constant
 2. file: thanks to hyperscan searching trough a file even with many patterns is very fast
 
-identifying a file is done by first building a identifier table which stores md5sums of the first 100 digits and corrosponding names for many different numbers
+Identifying a file is done by first building a identifier table which stores md5sums of the first 100 digits and corresponding names for many different numbers
 
 # installation
  - install astral/uv
- - make sure you have cpython 3.14 (freethreading reccomended, pypy3 not reccomended sadly)
+ - make sure you have cpython 3.14 (freethreading recommended, pypy3 not recommended sadly)
  - `git clone https://github.com/p1geondove/irranalyze.git`
  - `cd irranalyze`
  - `uv venv`
@@ -66,6 +67,8 @@ b'\x85'
 b'\x00\xd3\x08\xa3\x85\x88j?$D...
 >>> pi.mmap # can also be accessed
 <mmap.mmap closed=False, access=ACCESS_READ, length=415244288, pos=0, offset=0>
+>>> memoryview(pi)
+<memory at 0x532fda8db00>
 
 >>> txt_to_num("number") # some other functions
 '132012010417'
@@ -76,12 +79,26 @@ b'number'
 >>> len(list(_))
 4096
 
->>> res = pi[txt_to_num_all("number")] # takes 458.42ms
->>> res = pi[txt_to_num_all("number")] # takes 6.13ms since its now in the database
+>>> from irranalyze.helper import timer # lets have some more fun
+>>> pi[txt_to_num_all("number")] # takes 108.42ms
+>>> pi[txt_to_num_all("number")] # takes 6.13ms since its now in the database
+>>> all_nums = get_all()
+>>> len(all_nums)
+66 # the actual amount of numbers i have prepared
+>>> sum(c.size for c in all_nums) // 10**9
+225 # they total to about 225gb
+>>> @timer
+... def fun():
+...     for c in set(get_all()):
+...         c[txt_to_num_all("number")]
+...
+>>> fun() # this is on a empty database
+fun took 49.70 s
+>>> fun() # now with a filled database
+fun took 440.13ms
 ```
 
 # todo
- - implement aho-corasick algorithm for multi_search
  - add functionality:
    - find streak
    - find street
