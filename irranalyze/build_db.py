@@ -1,25 +1,25 @@
 # build_db.py - used to init the db with identifier table and precalculate some pattern:pos pairs
 
-import sqlite3
-from pathlib import Path
 from fractions import Fraction
-from typing import Any
+from hashlib import md5
 from itertools import chain
-from threading import Thread
+import mpmath
+from mpmath import e, pi, ln, sqrt, inf, root, nsum, fsum, nprod, findroot
+from pathlib import Path
 from queue import Queue
+import sqlite3
+import sympy
+from threading import Thread
 from time import perf_counter, sleep
+from typing import Any
 
 from .bignum import BigNum
 from .helper import format_size, format_time
 from .var import Sizes, Paths
 from .const import IDENTIFY_TABLE_NAME
 
+@mpmath.workdps(120)
 def build_identifier(verbose:bool=False):
-    from hashlib import md5
-    import mpmath
-    from mpmath import e, pi, ln, sqrt, inf, root, nsum, fsum, nprod, findroot
-    import sympy
-
     # a useful function to check if a number is interesting at all
     tol_int = mpmath.mpf("1e-90") # used for checking if int
     tol_rat = 10**90 # used for checking if rational
@@ -32,14 +32,11 @@ def build_identifier(verbose:bool=False):
     # only 100 digits are used but for big expressions evaluation can yield high error so increasing precision
     # if you wanna add constants maybe put this to 200 and look at the md5 hash of the generated db, then lower it until it changes, thats how i did it
     # 120 for now is the limit, altho funnily enough all my files still get identified with 105
-    mpmath.mp.dps = 120
     primes = [mpmath.mpf(p) for p in sympy.primerange(1e5)]
-    e = mpmath.e
-    pi = mpmath.pi
     root2 = sqrt(2)
     root3 = sqrt(3)
     ln2 = ln(2)
-    gamma = -mpmath.psi(1/3,1)
+    gamma = -mpmath.psi(mpmath.mpf("1/3"),1)
 
     if verbose:
         print("evaluating oneliners")
@@ -194,7 +191,8 @@ def build_identifier(verbose:bool=False):
     functions = [
         (root, "root"),
         (mpmath.beta, "beta"),
-        (mpmath.agm, "agm")
+        (mpmath.agm, "agm"),
+        (mpmath.power, "pow"),
     ]
 
     for fval,fname in functions:
@@ -215,7 +213,6 @@ def build_identifier(verbose:bool=False):
                 if verbose:
                     print(f"{name}:{blob}", end=" "*20+"\r")
 
-    mpmath.mp.dps = 20 # reset working precision
     # put all aggregated hash and name pairs into the database
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
