@@ -8,7 +8,7 @@ from typing import Iterable, Iterator, overload
 
 from .search import search
 from .identify import identify, check_valid
-from .convert import base_convert, hex_to_dec, ycd_to_str
+from .convert import base_convert, resolve_notation, ycd_to_str
 from .helper import format_size
 from .var import Sizes, Paths, Switches
 
@@ -133,7 +133,7 @@ class BigNum:
     def __enter__(self):
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self):
         self.close()
 
     def __buffer__(self, flags):
@@ -170,7 +170,7 @@ class BigNum:
             self._file.close()
             self._file = None
 
-    def to_base(self, base:int|str|list[str], digits:int=-1) -> str:
+    def to_base(self, base:int|str, digits:int=-1) -> str:
         """
         convert number to a different base, this includes intpart and radix point
         raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
@@ -182,45 +182,23 @@ class BigNum:
            - alnum -> lowercase + uppercase + digits
            - anything else will be used directly, like list[str]
         """
-
         if digits == -1:
             digits = self.size
 
-        # determine size of base notation
-        if isinstance(base,int):
-            base_len = base
-        elif isinstance(base,list):
-            base_len = len(base)
-        elif isinstance(base, str):
-            if base == "abc":
-                base_len = 26
-            elif base == "ABC":
-                base_len = 52
-            elif base == "alnum":
-                base_len = 62
-            else:
-                base_len = len(base)
-
-        # how many digits are needed for given base size (ignore ycd compression)
-        digits_needed = ceil(digits*log(base_len,self.base))
+        base_notation, _ = resolve_notation(base)
+        digits_needed = ceil(digits*log(len(base_notation),self.base))
 
         if self.format == "ycd":
-            frac_part = ycd_to_str(memoryview(self.mmap)[self.radix_pos+1:], self.base, digits_needed)
-            num_str = f"{self.intpart}.{frac_part}"
+            frac_part = ycd_to_str(memoryview(self)[self.radix_pos+1:], self.base, digits_needed)
         else:
-            _frac = self[:digits_needed]
-            if isinstance(_frac,bytes):
-                _frac = _frac.decode()
-            if not isinstance(_frac, str):
-                raise ValueError(f"fracpart is not type str {type(_frac)}")
-            num_str = str(self.intpart) + "." + _frac
-            if base == self.base:
-                return num_str[:digits]
+            frac_part = self[:digits_needed].decode()
 
-        if self.base == 16:
-            num_str = hex_to_dec(num_str)
+        num_str = f"{self.intpart}.{frac_part}"
 
-        return base_convert(num_str, base, digits)
+        if base == self.base:
+            return num_str[:digits]
+
+        return base_convert(num_str,self.base,base)[:digits]
 
 def get_all(
     name: str | None = None,

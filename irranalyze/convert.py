@@ -142,12 +142,12 @@ def str_to_ycd(in_string:str|memoryview, amount_digits:int=-1) -> bytes:
         try:
             chunk.tobytes().decode()
         except UnicodeDecodeError:
-            print("str_to_ycd was given a memoryview, but that memoryview contained non utf8 bytes. str_to_ycd must always be decodeable")
+            #print("str_to_ycd was given a memoryview, but that memoryview contained non utf8 bytes. str_to_ycd must always be decodeable")
             raise
     chunk_set = set(chunk)
     base = len(chunk_set)
     if "." in chunk_set:
-        print("str_to_ycd expexts digits after and not including the radix point")
+        #print("str_to_ycd expexts digits after and not including the radix point")
         raise ValueError
     if base not in (10,16):
         raise ValueError(f"Base can only be 10 or 16, not {base}")
@@ -186,89 +186,138 @@ def hex_to_dec(in_str:str, amount_digits:int=-1) -> str:
         return num_str[:dec_digits+radix_pos+1]
     return num_str[:amount_digits] # otherwise clip to wanted precision
 
-def base_convert(dec_str:str, base:int|str|list[str]|None = None, digits:int|None = None) -> str:
+def resolve_notation(output_base:int|str):
+    """ returns a basenotation string as well as a translation table for gmpy2 specific base notation """
+    trans = {}
+    base_chars = string.digits + string.ascii_lowercase + string.ascii_uppercase
+
+    if isinstance(output_base, int):
+        if 1 < output_base < 63:
+            base_notation = base_chars[:output_base]
+        else:
+            raise ValueError(f"output_base be between 2 and 62 (both included) not {output_base}")
+
+    elif isinstance(output_base, str):
+        if output_base == "abc":
+            # map 0-9-a-z -> a-z
+            base_notation = string.ascii_lowercase
+            for a,b in zip(string.digits+string.ascii_lowercase, base_notation):
+                trans[a]=b
+
+        elif output_base == "ABC":
+            # map 0-9-A-Z-a-z -> a-z-A-Z
+            base_notation = string.ascii_lowercase + string.ascii_uppercase
+            for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
+                trans[a]=b
+
+        elif output_base == "alnum":
+            # map 0-9-A-Z-a-z -> a-z-A-Z
+            base_notation = base_chars
+            for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
+                trans[a]=b
+
+        else:
+            if 2 < len(output_base) < 63:
+                base_notation = output_base
+                trans = {}
+                for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
+                    trans[a]=b
+            else:
+                raise ValueError(f"output_base must have a length of 2-62 not {len(output_base)}")
+    else:
+        raise ValueError(f"output_base must be either int or str {type(output_base)}")
+
+    return base_notation, str.maketrans(trans)
+
+def str_to_mpmath(number:str, base:int|str, precision_bits:int = 50):
+    base_notation,_ = resolve_notation(base)
+    if not 1 < len(base_notation) < 63:
+        raise ValueError("Base must be between 2 and 36")
+    number = number.strip().lower()
+    negative = number.startswith("-")
+    if negative:
+        number = number[1:]
+    if "." in number:
+        int_str, frac_str = number.split(".", 1)
+    else:
+        int_str, frac_str = number, ""
+    with mpmath.workprec(precision_bits):
+        mpbase = mpmath.mpf(len(base_notation))
+        int_val = mpmath.mpf(0)
+        for ch in int_str:
+            int_val = int_val * mpbase + base_notation.index(ch)
+        frac_val = mpmath.mpf(0)
+        for ch in reversed(frac_str):
+            frac_val = (frac_val + base_notation.index(ch)) / mpbase
+        result = int_val + frac_val
+    return -result if negative else result
+
+def mpmath_to_str(number, base:int|str, precision_bits:int = 50) -> str:
+    base_notation,_ = resolve_notation(base)
+    if not 1 < len(base_notation) < 63:
+        raise ValueError("Base must be between 2 and 36")
+    base = len(base_notation)
+    with mpmath.workprec(precision_bits):
+        x = mpmath.mpf(number)
+        negative = x < 0
+        x = mpmath.fabs(x)
+        int_part = int(mpmath.floor(x))
+        frac_part = x - mpmath.floor(x)
+        if int_part == 0:
+            int_str = "0"
+        else:
+            int_digits = []
+            n = int_part
+            while n > 0:
+                int_digits.append(base_notation[n % base])
+                n //= base
+            int_str = "".join(reversed(int_digits))
+        frac_str = ""
+        for _ in range(precision_bits):
+            frac_part *= base
+            digit = int(mpmath.floor(frac_part))
+            frac_str += base_notation[digit]
+            frac_part -= mpmath.floor(frac_part)
+            if frac_part == 0:
+                break
+        result = int_str
+        if frac_str:
+            result += "." + frac_str
+    return ("-" if negative else "") + result
+
+def base_convert(input_string:str|bytes, base_input:int|str, base_output:int|str):
     """
     convert number to a different base
-    raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
-    - if int is provided as base parameter is will use notation[:base]. special case is -1, with that it will use the entire thing
-    - if list[str] is provided as base parameter it will treat each element as a digit
+    raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+    - if int is provided as base parameter is will use notation[:base]
     - if str is provided as base parameter there are some special cases:
-    - abc -> all lower case letters
-    - ABC -> lowercase + uppercase
-    - alnum -> lowercase + uppercase + digits
+      - "abc" -> all lower case letters
+      - "ABC" -> lowercase + uppercase
+      - "alnum" -> lowercase + uppercase + digits
+      - anything else will be used as the base notation
     """
-    base_chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    base_notation_out, trans_table = resolve_notation(base_output)
+    base_output = len(base_notation_out)
 
-    if isinstance(base, str): # determine base notation
-        if base == "abc":
-            base_chars = string.ascii_lowercase
-        elif base == "ABC":
-            base_chars = string.ascii_letters
-        elif base == "alnum":
-            base_chars = string.digits + string.ascii_letters
-        else:
-            base_chars = base # custom charset
-    elif isinstance(base, int):
-        if base == -1:
-            base = len(base_chars)
-        elif not (_base := min(max(2, base), len(base_chars))) == base:
-            print(f"warn: clamped base from {base} to {_base}")
-            base = _base
-        base_chars = base_chars[:base]
-    elif isinstance(base, list):
-        if not all(isinstance(e,str) for e in base):
-            ValueError("base must be either int, string or list[str]")
-        base_chars = base
-    elif base is None:
-        base = len(base_chars)
+    if isinstance(input_string, str):
+        rough_conversion = mpmath_to_str(str_to_mpmath(input_string[:50],base_input),base_output)
+        radix_pos_in = input_string.find(".")
     else:
-        ValueError("base must be either int, string or list[str]")
+        rough_conversion = mpmath_to_str(str_to_mpmath(input_string[:50].decode(),base_input),base_output)
+        radix_pos_in = input_string.find(b".")
 
-    base = len(base_chars)
+    radix_pos_out = rough_conversion.find(".")
+    input_mp = gmpy2.mpz(input_string[radix_pos_in+1:], base_input) # type:ignore
+    n_in = len(input_string) - radix_pos_in - 1
+    n_out = int(mpmath.ceil(n_in * mpmath.log(base_input, base_output)))
+    pow_out = gmpy2.mpz(base_output) ** n_out # type:ignore
+    denom = gmpy2.mpz(base_input) ** n_in # type:ignore
+    res = (input_mp * pow_out) // denom
+    digits = res.digits(base_output).translate(trans_table)
+    rough_frac = rough_conversion.split(".")[1]
+    mp_start = len(rough_frac) - len(rough_frac.lstrip(base_notation_out[0]))
+    output = rough_conversion[:radix_pos_out+mp_start+1] + digits
+    if isinstance(input_string, bytes):
+        output = output.encode()
+    return output
 
-    radix_pos = dec_str.find(".")
-    if radix_pos == -1:
-        raise ValueError("input has no decimal point")
-    if not (set(dec_str)-set(".")).issubset(set("0123456789")):
-        raise ValueError(f"input string must be decimal, {set(dec_str)-set('.')}")
-
-    if digits is None:
-        digits = len(dec_str) - radix_pos
-
-    if base == 10:
-        return dec_str[:digits] if digits else dec_str
-
-    digits = max(2,int(abs(digits))) # in case digits is negative or float
-    input_amt_needed = max(1,int(digits*mpmath.log10(base))) # decimal digits needed to represent number in output base
-    if input_amt_needed > (len(dec_str)-radix_pos-1):
-        print("WARN: not enough data for accurate base conversion to specified size")
-        print(f"base_convert: {base=} {input_amt_needed=} {len(dec_str)=}")
-        frac_part = dec_str[radix_pos+1:].ljust(input_amt_needed,"0")
-    else:
-        frac_part = dec_str[radix_pos+1 : radix_pos+1+input_amt_needed]
-    frac_part = gmpy2.mpz(frac_part) # holy fuck my linter is telling me there is no mpz in gmpy2, stfu...
-    denominator = gmpy2.mpz("1"+"0"*input_amt_needed)
-    mpz_base = gmpy2.mpz(base)
-    int_part = "".join(map(
-        lambda i: base_chars[i],
-        numberToBase(int(dec_str[:radix_pos]), base),
-    ))
-
-    result_digits = []
-    for _ in range(digits):
-        frac_part *= mpz_base
-        digit = frac_part // denominator
-        frac_part %= denominator
-        result_digits.append(base_chars[int(digit)])
-        if frac_part == 0:
-            break
-    return (int_part + "." + "".join(result_digits))[:digits]
-
-def numberToBase(n, b):
-    if n == 0:
-        return [0]
-    digits = []
-    while n:
-        digits.append(int(n % b))
-        n //= b
-    return digits[::-1]
