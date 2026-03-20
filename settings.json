@@ -1,9 +1,8 @@
 {
   "num_dir": "/path/to/numbers/",
-  "sqlite_path": "irranalyze.sqlite",
+  "sqlite_path": "database.sqlite3",
   "report_not_found": true,
-  "one_indexed": false,
+  "one_indexed": true,
   "pairs_per_insert": 100000,
-  "chunk_size": 1048576,
   "first_digits_amount": 100000
 }

@@ -1,6 +1,7 @@
 # setup.py - useful dialog setup script
 
 from pathlib import Path
+import os
 
 from irranalyze.var import Paths, Sizes, Switches
 from irranalyze import build_db
@@ -118,29 +119,6 @@ def main():
             break
     Sizes.pairs_per_insert = val
     print(f"updated setting 'pairs_per_insert' to {val}")
-
-    # === Setting chunk_size ===
-    print("\n--- chunk_size ---\nThe size of chunks to use for search. Powers of 2 are usually best")
-    del val
-    while True:
-        prompt = input(f"Chunksize for searching ({Sizes.chunk_size}): ")
-        if prompt == "":
-            val = Sizes.chunk_size
-        else:
-            try:
-                prompt = eval(prompt)
-                val = int(prompt)
-            except (KeyboardInterrupt,EOFError):
-                raise
-            except:
-                print(f"Cant convert {prompt} to int")
-                continue
-        if val < 1:
-            print("chunksize has to be higher than zero")
-        else:
-            break
-    Sizes.chunk_size = val
-    print(f"updated setting 'chunk_size' to {val}")
 
     # === Setting first_digit_amount ===
     print("\n--- first_digit_amount ---\nThe amount of digits/chars to save in a variable. Used for quicksearch. Low values start multiprocessing search too much, high values will slow down quicksearch, when quicksearch should be low latency")

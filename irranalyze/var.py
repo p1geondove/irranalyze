@@ -13,13 +13,11 @@ When changing a value in a class, say Sizes.chunk_size=100 it immediatly updates
 """
 
 class _Sizes:
-    chunk_size: int
     first_digits_amount: int
     pairs_per_insert: int
 
     def __init__(self) -> None:
         raw = json.loads(SETTINGS_PATH.read_text())
-        object.__setattr__(self, "chunk_size", int(raw["chunk_size"]))
         object.__setattr__(self, "first_digits_amount", int(raw["first_digits_amount"]))
         object.__setattr__(self, "pairs_per_insert", int(raw["pairs_per_insert"]))
 
@@ -30,7 +28,6 @@ class _Sizes:
     def _save(self):
         raw = json.loads(SETTINGS_PATH.read_text())
         raw.update({
-            "chunk_size":self.chunk_size,
             "first_digits_amount":self.first_digits_amount,
             "pairs_per_insert":self.pairs_per_insert,
         })

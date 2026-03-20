@@ -16,7 +16,7 @@ from typing import Any
 from .bignum import BigNum
 from .helper import format_size, format_time
 from .var import Sizes, Paths
-from .const import IDENTIFY_TABLE_NAME
+from .const import IDENTIFY_TABLE_NAME, PAIRS_PER_INSERT
 
 @mpmath.workdps(120)
 def build_identifier(verbose:bool=False):
@@ -242,15 +242,15 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     conn = sqlite3.connect(Paths.sqlite_path)
     cursor = conn.cursor()
 
-    print(f"creating table {num.table_name}"+" "*50)
-    cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
+    print(f"creating table {num.info.table_name}"+" "*50)
+    cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.info.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
-    for startpos in range(num.radix_pos+1, amount_digits, Sizes.pairs_per_insert):
-        chunk = mv[startpos : startpos + Sizes.pairs_per_insert].tobytes()
+    for startpos in range(num.info.radix_pos+1, amount_digits, PAIRS_PER_INSERT):
+        chunk = mv[startpos : startpos + PAIRS_PER_INSERT].tobytes()
         patterns = get_patterns(chunk, max_substring_len, startpos+1)
-        cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
+        cursor.executemany(f"""INSERT OR IGNORE INTO "{num.info.table_name}" VALUES (?, ?)""", patterns)
         conn.commit()
-        patterns_done += Sizes.pairs_per_insert * max_substring_len
+        patterns_done += PAIRS_PER_INSERT * max_substring_len
 
         # progress printing
         time_elapsed = perf_counter() - time_start
@@ -263,7 +263,7 @@ def build_one(amount_digits:int, max_substring_len:int, num:BigNum):
     conn.close()
     mv.release()
     total_time = perf_counter()-time_start
-    print(f"done building search string table {num.table_name} in {format_time(total_time)}")
+    print(f"done building search string table {num.info.table_name} in {format_time(total_time)}")
 
 class SharedMem:
     nums_queue:Queue[BigNum] = Queue()
@@ -295,16 +295,16 @@ def build_mt(mem:SharedMem):
     while not mem.nums_queue.empty():
         num = mem.nums_queue.get()
         mv = memoryview(num)
-        db_path = mem.tmp_tables_dir/Path(num.table_name)
+        db_path = mem.tmp_tables_dir/Path(num.info.table_name)
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
+        cursor.execute(f"""CREATE TABLE IF NOT EXISTS "{num.info.table_name}" (string BLOB PRIMARY KEY, position INTEGER)""")
 
-        for startpos in range(num.radix_pos+1, mem.amount_digits, Sizes.pairs_per_insert):
+        for startpos in range(num.info.radix_pos+1, mem.amount_digits, Sizes.pairs_per_insert):
             chunk = mv[startpos : startpos + Sizes.pairs_per_insert].tobytes()
             patterns = get_patterns(chunk, mem.max_substring_len, startpos+1)
-            cursor.executemany(f"""INSERT OR IGNORE INTO "{num.table_name}" VALUES (?, ?)""", patterns)
+            cursor.executemany(f"""INSERT OR IGNORE INTO "{num.info.table_name}" VALUES (?, ?)""", patterns)
             conn.commit()
             mem.patterns_done += Sizes.pairs_per_insert * mem.max_substring_len
 
