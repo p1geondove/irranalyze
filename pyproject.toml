@@ -3,7 +3,7 @@ name = "irranalyze"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14.2"
+requires-python = ">3.9,<4.0"
 dependencies = [
     "gmpy2>=2.3.0",
     "hyperscan>=0.8.1",
