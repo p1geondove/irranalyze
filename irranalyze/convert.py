@@ -3,6 +3,7 @@
 import string
 from itertools import product
 from typing import Generator, overload
+from functools import lru_cache
 
 import mpmath
 import gmpy2
@@ -186,76 +187,101 @@ def hex_to_dec(in_str:str, amount_digits:int=-1) -> str:
         return num_str[:dec_digits+radix_pos+1]
     return num_str[:amount_digits] # otherwise clip to wanted precision
 
-def resolve_notation(output_base:int|str):
-    """ returns a basenotation string as well as a translation table for gmpy2 specific base notation """
+@overload
+def resolve_notation(output_base:int, asbytes=False) -> tuple[str, dict]: ...
+@overload
+def resolve_notation(output_base:str, asbytes=False) -> tuple[str, dict]: ...
+@overload
+def resolve_notation(output_base:bytes, asbytes=False) -> tuple[tuple[bytes], dict]: ...
+@overload
+def resolve_notation(output_base:int, asbytes=True) -> tuple[tuple[bytes], dict]: ...
+@overload
+def resolve_notation(output_base:str, asbytes=True) -> tuple[tuple[bytes], dict]: ...
+@overload
+def resolve_notation(output_base:bytes, asbytes=True) -> tuple[tuple[bytes], dict]: ...
+def resolve_notation(output_base:int|str|bytes, asbytes=False):
+    """ returns a basenotation iterable as well as a translation table for gmpy2 specific base notation """
     trans = {}
-    base_chars = string.digits + string.ascii_lowercase + string.ascii_uppercase
-
     if isinstance(output_base, int):
-        if 1 < output_base < 63:
-            base_notation = base_chars[:output_base]
-        else:
-            raise ValueError(f"output_base be between 2 and 62 (both included) not {output_base}")
+        base_notation = string.printable[:output_base]
 
     elif isinstance(output_base, str):
         if output_base == "abc":
-            # map 0-9-a-z -> a-z
+            # mpz=dig,lower mine=lower
             base_notation = string.ascii_lowercase
             for a,b in zip(string.digits+string.ascii_lowercase, base_notation):
                 trans[a]=b
 
         elif output_base == "ABC":
-            # map 0-9-A-Z-a-z -> a-z-A-Z
+            # mpz=dig,upper,lower mine=lower,upper
             base_notation = string.ascii_lowercase + string.ascii_uppercase
             for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
                 trans[a]=b
 
         elif output_base == "alnum":
-            # map 0-9-A-Z-a-z -> a-z-A-Z
-            base_notation = base_chars
+            # mpz=mine
+            base_notation = string.digits+string.ascii_lowercase
+            # for a,b in zip(string.digits+string.ascii_lowercase, base_notation):
+            #     trans[a]=b
+
+        elif output_base == "ALNUM":
+            # mpz=dig,upper,lower mine=dig,lower,upper
+            base_notation = string.digits+string.ascii_lowercase+string.ascii_uppercase
             for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
                 trans[a]=b
 
+
         else:
-            if 2 < len(output_base) < 63:
-                base_notation = output_base
-                trans = {}
-                for a,b in zip(string.digits+string.ascii_uppercase+string.ascii_lowercase, base_notation):
-                    trans[a]=b
-            else:
-                raise ValueError(f"output_base must have a length of 2-62 not {len(output_base)}")
+            base_notation = output_base
+            trans = {}
+            for a,b in zip(string.printable ,base_notation):
+                trans[a]=b
+    
+    elif isinstance(output_base, bytes):
+        return tuple(bytes((c,)) for c in output_base), {ord(str(i)):c for i,c in zip(string.printable, output_base)}
+
     else:
         raise ValueError(f"output_base must be either int or str {type(output_base)}")
+    
+    if asbytes:
+        base_notation = tuple(bytes((c,)) for c in base_notation.encode())
+        trans = {k:ord(v) for k,v in trans.items()}
 
     return base_notation, str.maketrans(trans)
 
-def str_to_mpmath(number:str, base:int|str, precision_bits:int = 50):
-    base_notation,_ = resolve_notation(base)
-    if not 1 < len(base_notation) < 63:
-        raise ValueError("Base must be between 2 and 36")
-    number = number.strip().lower()
-    negative = number.startswith("-")
+def str_to_mpmath(number:str|bytes, base:int|str|bytes, precision_bits:int = 50):
+    base_notation,_ = resolve_notation(base, isinstance(number,bytes))
+    if isinstance(base_notation, tuple):
+        base_notation = b"".join(base_notation)
+    notation_table = {char:val for val,char in enumerate(base_notation)}
+    number = number.strip()
+    if isinstance(number, str):
+        negative = number.startswith("-")
+        if "." in number:
+            int_str, frac_str = number.split(".", 1)
+        else:
+            int_str, frac_str = number, ""
+    else:
+        negative = number.startswith(b"-")
+        if b"." in number:
+            int_str, frac_str = number.split(b".", 1)
+        else:
+            int_str, frac_str = number, b""
     if negative:
         number = number[1:]
-    if "." in number:
-        int_str, frac_str = number.split(".", 1)
-    else:
-        int_str, frac_str = number, ""
     with mpmath.workprec(precision_bits):
         mpbase = mpmath.mpf(len(base_notation))
         int_val = mpmath.mpf(0)
         for ch in int_str:
-            int_val = int_val * mpbase + base_notation.index(ch)
+            int_val = int_val * mpbase + notation_table[ch]
         frac_val = mpmath.mpf(0)
         for ch in reversed(frac_str):
-            frac_val = (frac_val + base_notation.index(ch)) / mpbase
+            frac_val = (frac_val + notation_table[ch]) / mpbase
         result = int_val + frac_val
     return -result if negative else result
 
-def mpmath_to_str(number, base:int|str, precision_bits:int = 50) -> str:
+def mpmath_to_str(number, base:int|str|bytes, precision_bits:int = 50) -> str|bytes:
     base_notation,_ = resolve_notation(base)
-    if not 1 < len(base_notation) < 63:
-        raise ValueError("Base must be between 2 and 36")
     base = len(base_notation)
     with mpmath.workprec(precision_bits):
         x = mpmath.mpf(number)
@@ -264,15 +290,18 @@ def mpmath_to_str(number, base:int|str, precision_bits:int = 50) -> str:
         int_part = int(mpmath.floor(x))
         frac_part = x - mpmath.floor(x)
         if int_part == 0:
-            int_str = "0"
+            int_str = base_notation[0]
         else:
             int_digits = []
             n = int_part
             while n > 0:
                 int_digits.append(base_notation[n % base])
                 n //= base
-            int_str = "".join(reversed(int_digits))
-        frac_str = ""
+            if isinstance(int_digits[0], str):
+                int_str = "".join(reversed(int_digits))
+            else:
+                int_str = b"".join(reversed(int_digits))
+        frac_str = "" if isinstance(base_notation, str) else b""
         for _ in range(precision_bits):
             frac_part *= base
             digit = int(mpmath.floor(frac_part))
@@ -282,10 +311,21 @@ def mpmath_to_str(number, base:int|str, precision_bits:int = 50) -> str:
                 break
         result = int_str
         if frac_str:
-            result += "." + frac_str
-    return ("-" if negative else "") + result
+            if isinstance(result, str) and isinstance(frac_str, str):
+                result += "." + frac_str
+            elif isinstance(result, bytes) and isinstance(frac_str, bytes):
+                result += b"." + frac_str
+    if isinstance(result, str):
+        result = ("-" if negative else "") + result
+    else:
+        result = (b"-" if negative else b"") + result
+    return result
 
-def base_convert(input_string:str|bytes, base_input:int|str, base_output:int|str):
+@overload
+def base_convert(input_string:str, base_input:int|str|bytes, base_output:int|str|bytes) -> str: ...
+@overload
+def base_convert(input_string:bytes, base_input:int|str|bytes, base_output:int|str|bytes) -> bytes: ...
+def base_convert(input_string:str|bytes, base_input:int|str|bytes, base_output:int|str|bytes):
     """
     convert number to a different base
     raw base notation is 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
@@ -296,28 +336,58 @@ def base_convert(input_string:str|bytes, base_input:int|str, base_output:int|str
       - "alnum" -> lowercase + uppercase + digits
       - anything else will be used as the base notation
     """
-    base_notation_out, trans_table = resolve_notation(base_output)
-    base_output = len(base_notation_out)
-
-    if isinstance(input_string, str):
-        rough_conversion = mpmath_to_str(str_to_mpmath(input_string[:50],base_input),base_output)
-        radix_pos_in = input_string.find(".")
-    else:
-        rough_conversion = mpmath_to_str(str_to_mpmath(input_string[:50].decode(),base_input),base_output)
-        radix_pos_in = input_string.find(b".")
-
-    radix_pos_out = rough_conversion.find(".")
-    input_mp = gmpy2.mpz(input_string[radix_pos_in+1:], base_input) # type:ignore
-    n_in = len(input_string) - radix_pos_in - 1
-    n_out = int(mpmath.ceil(n_in * mpmath.log(base_input, base_output)))
-    pow_out = gmpy2.mpz(base_output) ** n_out # type:ignore
-    denom = gmpy2.mpz(base_input) ** n_in # type:ignore
+    base_notation_in, _ = resolve_notation(base_input) # input base as representation iterable and translation table
+    base_in = len(base_notation_in) # input base as int
+    base_notation_out, trans_table = resolve_notation(base_output, isinstance(input_string, bytes)) # output base as representation iterable and translation table
+    base_out = len(base_notation_out) # output base as int
+    partial_input = input_string[:50]
+    rough_conversion = mpmath_to_str(str_to_mpmath(partial_input, base_input), base_output)
+    radix_in = (input_string.find(".") if isinstance(input_string,str) else input_string.find(b".")) + 1
+    radix_out = (rough_conversion.find(".") if isinstance(rough_conversion, str) else rough_conversion.find(b".")) + 1
+    zero_char = base_notation_out[0]
+    input_mp = gmpy2.mpz(input_string[radix_in:], base_in) # type:ignore mpz not a known attribute, no biggie
+    n_in = len(input_string) - radix_in
+    n_out = int(mpmath.ceil(n_in * mpmath.log(base_in, base_out)))
+    pow_out = gmpy2.mpz(base_out) ** n_out # type:ignore mpz not a known attribute, no biggie
+    denom = gmpy2.mpz(base_in) ** n_in # type:ignore mpz not a known attribute, no biggie
     res = (input_mp * pow_out) // denom
-    digits = res.digits(base_output).translate(trans_table)
-    rough_frac = rough_conversion.split(".")[1]
-    mp_start = len(rough_frac) - len(rough_frac.lstrip(base_notation_out[0]))
-    output = rough_conversion[:radix_pos_out+mp_start+1] + digits
-    if isinstance(input_string, bytes):
-        output = output.encode()
-    return output
+    if base_out <= 62: digits = res.digits(base_out).translate(trans_table)
+    else: digits = make_extractor(base_out, base_notation_out)(res, n_out)
+
+    # bring all variables to the same datatype
+    if isinstance(input_string, str):
+        if isinstance(digits, bytes):
+            digits = digits.decode()
+        if isinstance(rough_conversion, bytes):
+            rough_conversion = rough_conversion.decode()
+        if isinstance(zero_char, bytes):
+            zero_char = zero_char.decode()
+    elif isinstance(input_string, bytes):
+        if isinstance(digits, str):
+            digits = digits.encode()
+        if isinstance(rough_conversion, str):
+            rough_conversion = rough_conversion.encode()
+        if isinstance(zero_char, str):
+            zero_char = zero_char.encode()
+
+    rough_frac = rough_conversion[radix_out:]
+    mp_start = len(rough_frac) - len(rough_frac.lstrip(zero_char))
+    return rough_conversion[:radix_out+mp_start] + digits
+
+def make_extractor(base:int, notation:str|tuple[bytes]):
+    @lru_cache(maxsize=None)
+    def power(k):
+        if k == 1: return gmpy2.mpz(base) # type:ignore
+        half = power(k // 2)
+        p = half * half
+        return p * base if k % 2 else p
+
+    def extract(n, num_digits:int):
+        if num_digits == 1:
+            return notation[n]
+        lo = num_digits // 2
+        top, bottom = divmod(n, power(lo))
+        return extract(top, num_digits - lo) + extract(bottom, lo)
+
+    return extract
 
