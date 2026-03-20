@@ -70,7 +70,7 @@ def identify(file_path:Path) -> BigNumInfo:
         raise ValueError("illegal base")
 
     if base == 16:
-        decimal_digits *= int(log(16,10))
+        decimal_digits = int(log(16,10) * decimal_digits)
         num = hex_to_dec(num)
 
     # check if db exists
