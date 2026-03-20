@@ -284,14 +284,14 @@ class TestConverters(unittest.TestCase):
     def test_str_to_ycd(self):
         pi_dec_txt = BigNum(PATH_PI_DEC_TXT)
         pi_dec_ycd = BigNum(PATH_PI_DEC_YCD)
-        ycd = str_to_ycd(memoryview(pi_dec_txt)[pi_dec_txt.radix_pos+1:], 500)
+        ycd = str_to_ycd(memoryview(pi_dec_txt)[pi_dec_txt.info.radix_pos+1:], 500)
         self.assertEqual(len(ycd), 500)
         self.assertEqual(ycd, pi_dec_ycd[:500])
 
     def test_ycd_to_str(self):
         pi_dec_txt = BigNum(PATH_PI_DEC_TXT)
         pi_dec_ycd = BigNum(PATH_PI_DEC_YCD)
-        string = ycd_to_str(memoryview(pi_dec_ycd)[pi_dec_ycd.radix_pos+1:], 10, 500)
+        string = ycd_to_str(memoryview(pi_dec_ycd)[pi_dec_ycd.info.radix_pos+1:], 10, 500)
         self.assertEqual(len(string), 500)
         self.assertEqual(string, pi_dec_txt[:500].decode())
 

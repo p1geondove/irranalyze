@@ -21,30 +21,23 @@ def search_file(bignum:BigNum, patterns:list[bytes], lower_bound:int|None = None
     bounds_size = upper_bound - lower_bound
     block_size = 2**32-1
     block_mode = bounds_size <= block_size
-    print(f"{lower_bound=} {upper_bound=}")
 
     # hyperscan db setup
     id_pattern_map = {id:pat for id,pat in enumerate(patterns)}
     positions = {p:-1 for p in patterns}
-    #scratch = hyperscan.Scratch()
     if block_mode:
-        print("scanning using block mode")
         db = hyperscan.Database(mode=hyperscan.HS_MODE_BLOCK)
     else:
-        print("scanning using stream mode")
         db = hyperscan.Database(mode=hyperscan.HS_MODE_VECTORED)
     ids = list(range(len(patterns)))
     flags = [hyperscan.HS_FLAG_SINGLEMATCH] * len(patterns)
     db.compile(expressions=patterns, ids=ids, elements=len(patterns), flags=flags)
 
-    mv = memoryview(bignum.mmap)
-    print(f"before scanning: {mv.c_contiguous=} {mv.contiguous=}")
+    mv = memoryview(bignum)[lower_bound:upper_bound]
     if block_mode:
-        print(f"block size for block mode: {len(mv) = }")
         db.scan(mv, match_handler)
     else:
         blocks = [mv[i:i+block_size] for i in range(0,bounds_size,block_size)]
-        print(f"blocks size for vector mode: {[len(b) for b in blocks] = }")
         db.scan(blocks, match_handler)
         for b in blocks:
             b.release()
