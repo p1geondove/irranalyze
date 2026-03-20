@@ -18,6 +18,7 @@ class BigNumInfo:
     format:str # format of the file, can only be "txt" or "ycd"
     int_part:int # the integer part saved as int
     radix_pos:int # position of the radix pos inside the file
+    digit_count:int # amount of actual digits in the file, not matter the base
     file_size:int # actual filesize
     decimal_digits:int # the amount of decimal digits in the file, no matter if file is dec or hex
     table_name:str # the table name for the constant
@@ -65,6 +66,8 @@ def identify(file_path:Path) -> BigNumInfo:
         num = f"{int_part}.{frac_part}"
         decimal_digits = int(chunk.split(b"Blocksize:\t")[1].split(b"\r\n")[0])
 
+    digit_count = file_size - radix_pos - 1
+    
     # y-cruncher only outputs hex and dec
     if base!=10 and base!=16:
         raise ValueError("illegal base")
@@ -72,7 +75,6 @@ def identify(file_path:Path) -> BigNumInfo:
     if base == 16:
         decimal_digits = int(log(16,10) * decimal_digits)
         num = hex_to_dec(num)
-
     # check if db exists
     if Paths.sqlite_path.exists():
         conn = sqlite3.connect(Paths.sqlite_path)
@@ -97,7 +99,7 @@ def identify(file_path:Path) -> BigNumInfo:
 
     table_name = "_".join(map(str,(name,base,format)))
 
-    return BigNumInfo(file_path,name,base,format,int(int_part),radix_pos,file_size,decimal_digits,table_name)
+    return BigNumInfo(file_path,name,base,format,int(int_part),radix_pos,digit_count,file_size,decimal_digits,table_name)
 
 def get_table_name(file_path:Path) -> str|None:
     """ helper function that calls identify and returns the table name if constant name is known """
@@ -123,5 +125,4 @@ def check_valid(file_path:Path) -> bool:
         if chunk.count(b".") != 1: return False
         digits = set(chunk)-set(b".")
         if len(digits) not in (10,16): return False
-
     return True
